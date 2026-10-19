@@ -8,11 +8,13 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.runtime.*
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.text.TextLayoutResult
 import com.tito.titodex.launcher.ui.LauncherApp
+import com.tito.titodex.launcher.ui.FocusTargets
 import kotlinx.coroutines.Dispatchers
 import org.junit.Assert.*
 import org.junit.Rule
@@ -183,6 +185,13 @@ class HeaderTypographyTest {
                     rule.onNodeWithTag("forecast-hour-0").assertIsDisplayed()
                     rule.onNodeWithTag("forecast-day-0").assertIsDisplayed()
                     rule.onNodeWithContentDescription("今天气温范围：21到28度").assertExists()
+                    val city = rule.onNodeWithTag("weather-city-control").fetchSemanticsNode().boundsInRoot
+                    val close = rule.onNodeWithTag("weather-close").fetchSemanticsNode().boundsInRoot
+                    val refresh = rule.onNodeWithTag("weather-refresh").fetchSemanticsNode().boundsInRoot
+                    assertTrue("city belongs in the forecast header", city.top < bounds.top + 15 * density)
+                    assertTrue("close belongs at the bottom right", bounds.right - close.right <= 13 * density)
+                    assertTrue("close belongs at the bottom right", bounds.bottom - close.bottom <= 11 * density)
+                    assertEquals(refresh.center.y, close.center.y, 1f)
                 }
                 // A fixed 16dp corner leaves this point inside the panel even on a tall forecast.
                 // The former percentage-radius overload cuts deeply into this point.
@@ -197,24 +206,69 @@ class HeaderTypographyTest {
 
     @Test @Config(qualifiers = "w640dp-h360dp-hdpi")
     fun illustratedForecastActionsRemainReachableOnShortLandscape() {
-        val (_, state) = launch()
+        val (device, state) = launch()
         rule.runOnIdle {
             state.weather = WeatherReading(26.0, 2, 0L,
                 List(6) { HourForecast("${10 + it}时", 24 + it, listOf(2, 0, 3, 61, 95, 45)[it]) },
                 List(4) { DayForecast(if (it == 0) "今天" else "周${it + 2}", 28 - it, 20 - it, listOf(3, 61, 0, 95)[it]) })
         }
         val before = state.settings
+        val storedBefore = device.stored
         rule.onNodeWithContentDescription("天气").performClick()
         capture("forecast-landscape").recycle()
-        rule.onNodeWithContentDescription("⌖ 更换城市").performScrollTo().performClick()
+        rule.onNodeWithContentDescription("更换城市").performScrollTo().performTouchInput { click() }
         assertTrue(state.cityDialog)
         rule.runOnIdle { state.back() }
         assertFalse(state.cityDialog)
         rule.onNodeWithContentDescription("天气").performClick()
-        rule.onNodeWithContentDescription("✕ 关闭天气").performScrollTo().performClick()
+        val readingBefore = state.weather
+        rule.onNodeWithContentDescription("关闭天气卡片").performScrollTo().performTouchInput { click() }
         assertNull(state.pop)
-        assertEquals(before.copy(city = null), state.settings)
-        rule.onNodeWithContentDescription("撤销").performClick()
         assertEquals(before, state.settings)
+        assertEquals(storedBefore, device.stored)
+        assertEquals(readingBefore, state.weather)
+        assertNull("closing a panel must not create a settings undo", state.toast)
+        rule.onNodeWithTag("clock-weather").assertIsDisplayed()
+        rule.onNodeWithContentDescription("天气").performClick()
+        rule.onNodeWithContentDescription("刷新天气").performScrollTo().performTouchInput { click() }
+        rule.waitUntil { state.weather?.hours?.isEmpty() == true }
+        assertTrue("refresh must leave the forecast open", state.pop is Pop.Weather)
+        assertEquals(before, state.settings)
+        assertEquals(storedBefore, device.stored)
+    }
+
+    @OptIn(ExperimentalTestApi::class)
+    @Test fun closeIconAlsoDismissesUnconfiguredLoadingAndErrorCardsWithGamepad() {
+        val (device, state) = launch()
+        val originalCity = state.settings.city
+        for ((city, error) in listOf(null to null, originalCity to null, originalCity to "天气暂不可用")) {
+            rule.runOnIdle {
+                state.update { it.copy(city = city) }
+                state.weather = null
+                state.weatherError = error
+                state.input = InputKind.Pad
+                state.pop = Pop.Weather(Rect(20f, 20f, 80f, 60f))
+            }
+            val before = state.settings
+            val storedBefore = device.stored
+            rule.onNodeWithContentDescription(if (city == null) "选择城市" else "更换城市").assertIsDisplayed()
+            rule.onNodeWithContentDescription("关闭天气卡片").assertIsDisplayed()
+            if (city == null) rule.onNodeWithContentDescription("刷新天气").assertDoesNotExist()
+            // Let the popup's initial city focus settle before moving to the close action.
+            rule.mainClock.advanceTimeBy(100)
+            rule.waitForIdle()
+            rule.runOnIdle {
+                val close = FocusTargets.requesters["p:o"]
+                assertNotNull("close focus missing for $city / $error: ${FocusTargets.requesters.keys}", close)
+                close!!.requestFocus()
+            }
+            rule.onRoot().performKeyInput { pressKey(Key.DirectionCenter) }
+            assertNull(state.pop)
+            assertFalse(state.cityDialog)
+            assertEquals(before, state.settings)
+            assertEquals(storedBefore, device.stored)
+            assertNull(state.weather)
+            assertEquals(error, state.weatherError)
+        }
     }
 }

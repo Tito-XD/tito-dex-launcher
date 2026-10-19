@@ -179,8 +179,9 @@ fun PopLayer(state: LauncherState, wDp: Float, hDp: Float) {
             is Pop.Weather -> {
                 val city = state.settings.city
                 val w = state.weather
-                if (w != null) WeatherForecast(w, city?.name)
+                if (w != null) WeatherForecast(w) { WeatherCityControl(state) }
                 else {
+                    Box(Modifier.padding(horizontal = 6.dp)) { WeatherCityControl(state) }
                     Text(state.weatherError ?: if (city == null) "添加天气" else "正在获取…",
                         style = text(18.sp, FontWeight.ExtraBold, Navy), modifier = Modifier.padding(6.dp))
                     Note(when {
@@ -190,11 +191,10 @@ fun PopLayer(state: LauncherState, wDp: Float, hDp: Float) {
                     })
                 }
                 if (w != null && state.weatherError != null) Note("刷新失败，显示上次获取的预报")
-                Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    if (city != null) Chip(state, "p:r", "刷新", tinted = true, label = "↻ 刷新") { state.refreshWeather(force = true) }
-                    Chip(state, "p:c", if (city == null) "选择城市" else "更换城市", tinted = true,
-                        label = if (city == null) "⌖ 选择城市" else "⌖ 更换城市") { state.pop = null; state.cityDialog = true }
-                    if (city != null) Chip(state, "p:o", "关闭天气", tinted = true, label = "✕ 关闭天气") { state.pop = null; state.setCity(null) }
+                Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 4.dp)) {
+                    if (city != null) WeatherIconButton(state, WeatherAction.Refresh) { state.refreshWeather(force = true) }
+                    Spacer(Modifier.weight(1f))
+                    WeatherIconButton(state, WeatherAction.Close) { state.pop = null }
                 }
             }
         }

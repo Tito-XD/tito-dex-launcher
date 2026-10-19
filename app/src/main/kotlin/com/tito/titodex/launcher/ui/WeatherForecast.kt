@@ -21,7 +21,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.tito.titodex.launcher.WeatherReading
@@ -98,15 +97,15 @@ private fun DrawScope.sun(color: Color, center: Offset, radius: Float) {
 }
 
 @Composable
-internal fun WeatherForecast(reading: WeatherReading, city: String?) {
+internal fun WeatherForecast(reading: WeatherReading, cityControl: @Composable () -> Unit) {
     val look = LocalLook.current
     val ink = look.sheetInk
     val muted = ink.copy(alpha = .6f)
     val accent = if (look.journal) Color(0xffb0745a) else Color(0xff5086ae)
     Column(Modifier.fillMaxWidth().padding(horizontal = 6.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Row(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().padding(bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                Text(city ?: "当前天气", style = text(12.sp, FontWeight.Bold, muted), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                cityControl()
                 OpticalText("${reading.temperature.roundToInt()}°", text(44.sp, FontWeight.ExtraBold, ink))
                 Text(reading.description, style = text(14.sp, FontWeight.ExtraBold, ink))
             }
