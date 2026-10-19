@@ -19,7 +19,6 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -54,6 +53,8 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -94,11 +95,10 @@ fun ClockSticker(state: LauncherState, s: Settings, size: String, now: Calendar,
     // Reserve space for readable metadata first. Only the clock numerals adapt
     // to the available cell; never scale the date/weather as a rendered group.
     BoxWithConstraints(Modifier.fillMaxSize().padding(horizontal = 4.dp), contentAlignment = Alignment.CenterStart) {
-        val narrowDate = maxWidth < 190.dp
         val banner = size == "w"
         val preferred = when { banner -> 74f; size == "l" -> 64f; else -> 50f }
         val numberSize = min(preferred, ((maxHeight.value - if (banner) 8f else 38f) / density.fontScale).coerceAtLeast(24f))
-        val metaSize = if (banner) 18.sp else 16.sp
+        val metaSize = 14.sp
         val timeStyle = text(numberSize.sp, if (look.journal) FontWeight.Bold else FontWeight.ExtraBold, look.bgInk,
             (if (look.flat) -3.5 else -2.0).sp).copy(
             lineHeight = (numberSize * .95f).sp,
@@ -143,25 +143,28 @@ fun ClockSticker(state: LauncherState, s: Settings, size: String, now: Calendar,
             // Always one line for time, one shared line for date and weather.
             // Narrow screens only tighten decoration, never change this hierarchy.
             val horizontalTime = @Composable { modifier: Modifier ->
-                BoxWithConstraints(modifier, contentAlignment = Alignment.BottomStart) {
-                    val candidateSize = if (banner) 74f else if (size == "l") 64f else 48f
-                    val candidate = timeStyle.copy(fontSize = candidateSize.sp, lineHeight = candidateSize.sp,
+                BoxWithConstraints(modifier, contentAlignment = Alignment.BottomCenter) {
+                    val candidate = timeStyle.copy(fontSize = 100.sp, lineHeight = 100.sp,
+                        letterSpacing = (if (look.flat) -.035f else -.02f).em,
+                        fontFeatureSettings = "tnum",
                         platformStyle = PlatformTextStyle(includeFontPadding = false))
                     val measured = timeMeasurer.measure("88:88", candidate, softWrap = false).size
+                    val ink = textInk("88:88", candidate)
                     val fit = with(density) { minOf(1f,
                         maxWidth.toPx() / measured.width.coerceAtLeast(1),
-                        maxHeight.toPx() / measured.height.coerceAtLeast(1)) } * .98f
-                    Text(buildAnnotatedString { append("$hh:"); withStyle(SpanStyle(color = look.accentInk)) { append(mm) } },
-                        style = candidate.copy(fontSize = (candidateSize * fit).sp, lineHeight = (candidateSize * fit).sp),
-                        maxLines = 1, softWrap = false)
+                        maxHeight.toPx() / ink.height().coerceAtLeast(1)) } * .98f
+                    OpticalText(buildAnnotatedString { append("$hh:"); withStyle(SpanStyle(color = look.accentInk)) { append(mm) } },
+                        style = candidate.copy(fontSize = (100f * fit).sp, lineHeight = (100f * fit).sp),
+                        modifier = Modifier.testTag("clock-time"))
                 }
             }
-            Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 horizontalTime(Modifier.weight(1f).fillMaxWidth())
-                Row(Modifier.fillMaxWidth().heightIn(min = 30.dp), horizontalArrangement = Arrangement.spacedBy(5.dp),
+                Row(Modifier.fillMaxWidth().heightIn(min = 24.dp).testTag("clock-metadata"),
+                    horizontalArrangement = Arrangement.spacedBy(5.dp, Alignment.CenterHorizontally),
                     verticalAlignment = Alignment.CenterVertically) {
-                    DateStamp(dateLabel(now), metaSize, compact = narrowDate)
-                    if (s.showWeather) WeatherChip(state, s, weather, metaSize, live, compact = narrowDate)
+                    CompactDateStamp(now, metaSize, wrap = false)
+                    if (s.showWeather) WeatherChip(state, s, weather, metaSize, live, compact = true)
                 }
             }
         }
@@ -169,53 +172,38 @@ fun ClockSticker(state: LauncherState, s: Settings, size: String, now: Calendar,
 }
 
 @Composable
-private fun CompactDateStamp(now: Calendar) {
+private fun CompactDateStamp(now: Calendar, size: androidx.compose.ui.unit.TextUnit = 16.sp, wrap: Boolean = true) {
     val look = LocalLook.current
     val density = LocalDensity.current
     val measurer = rememberTextMeasurer()
     val date = dateLabel(now).substringBefore(' ')
     val weekday = listOf("SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT")[now.get(Calendar.DAY_OF_WEEK) - Calendar.SUNDAY]
-    val dateStyle = text(16.sp, FontWeight.ExtraBold, look.bgInk)
+    val dateStyle = text(size, FontWeight.ExtraBold, look.bgInk)
     val weekdayStyle = dateStyle.copy(
-        drawStyle = Stroke(width = with(density) { .8.dp.toPx() }, join = StrokeJoin.Round),
+        drawStyle = Stroke(width = with(density) { (.8f * size.value / 16f).dp.toPx() }, join = StrokeJoin.Round),
     )
     val dateText = @Composable { modifier: Modifier ->
         Text(date, style = dateStyle, maxLines = 1, softWrap = false, modifier = modifier)
     }
     val weekdayText = @Composable { modifier: Modifier ->
         Text(weekday, style = weekdayStyle, maxLines = 1, softWrap = false,
-            modifier = modifier.padding(horizontal = 1.dp).semantics {
+            modifier = modifier.padding(horizontal = 1.dp).testTag("clock-weekday").semantics {
                 contentDescription = dateLabel(now).substringAfter(' ')
             })
     }
-    BoxWithConstraints(Modifier.fillMaxWidth()) {
+    BoxWithConstraints(if (wrap) Modifier.fillMaxWidth() else Modifier) {
         val needed = measurer.measure(date, dateStyle, softWrap = false).size.width +
             measurer.measure(weekday, weekdayStyle, softWrap = false).size.width + with(density) { 7.dp.toPx() }
         // Keep both labels readable at accessibility font sizes; only wrap if
         // the real cell cannot hold the row without shrinking either label.
-        if (needed <= with(density) { maxWidth.toPx() }) {
-            Row(Modifier.heightIn(min = 28.dp), horizontalArrangement = Arrangement.spacedBy(5.dp),
+        if (!wrap || needed <= with(density) { maxWidth.toPx() }) {
+            Row(Modifier.heightIn(min = if (wrap) 28.dp else 24.dp), horizontalArrangement = Arrangement.spacedBy(5.dp),
                 verticalAlignment = Alignment.CenterVertically) {
                 dateText(Modifier.alignByBaseline()); weekdayText(Modifier.alignByBaseline())
             }
         } else {
             Column { dateText(Modifier); weekdayText(Modifier) }
         }
-    }
-}
-
-@Composable
-private fun DateStamp(label: String, size: androidx.compose.ui.unit.TextUnit, compact: Boolean = false) {
-    val look = LocalLook.current
-    when {
-        look.journal -> Text(
-            label, style = text(size, color = look.bgInk), maxLines = 1, softWrap = false,
-            modifier = Modifier.rotate(-2f).drawBehind {
-                drawRoundRect(look.bgInk, cornerRadius = CornerRadius(6.dp.toPx()), style = Stroke(1.5.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(5f, 4f))))
-            }.padding(horizontal = if (compact) 3.dp else 7.dp, vertical = 2.dp),
-        )
-        look.flat -> Text(label, style = text(size, FontWeight.ExtraBold, Cream), maxLines = 1, softWrap = false, modifier = Modifier.background(Navy, RoundedCornerShape(12.dp)).padding(horizontal = if (compact) 3.dp else 10.dp, vertical = 3.dp))
-        else -> Text(label, style = text(size, color = look.bgInk), maxLines = 1, softWrap = false)
     }
 }
 
@@ -235,21 +223,25 @@ private fun WeatherChip(state: LauncherState, s: Settings, weather: WeatherReadi
     }
     val density = LocalDensity.current
     val measurer = rememberTextMeasurer()
-    val style = text(size, FontWeight.ExtraBold, fg)
+    val style = text(size, FontWeight.ExtraBold, fg).copy(platformStyle = PlatformTextStyle(includeFontPadding = false))
     BoxWithConstraints {
         val labelWidth = with(density) { measurer.measure(label, style, softWrap = false).size.width.toDp() }
-        val narrow = compact || labelWidth + 24.dp > maxWidth
+        val showIcon = city != null && weather != null
+        val fullWidth = labelWidth + if (showIcon) 38.dp else 20.dp
+        val narrow = compact || fullWidth > maxWidth
+        // The smallest 1x2 cell needs room for the degree sign as well as the icon.
+        val tight = narrow && showIcon && labelWidth + 24.dp > maxWidth
         val displayLabel = if (city == null && narrow) "天气" else label
-        val showIcon = !compact && city != null && weather != null && labelWidth + 43.dp <= maxWidth
         Row(
             (if (live) Modifier.padTarget(state, "wx", "天气") { state.pop = Pop.Weather(state.rects["wx"] ?: androidx.compose.ui.geometry.Rect.Zero) } else Modifier)
+                .testTag("clock-weather")
                 .background(bg, shape)
                 .then(if (look.journal) Modifier.border(1.25.dp, JournalLine, shape) else if (look.plastic) Modifier.border(1.dp, Color.White.copy(alpha = .7f), shape) else Modifier)
-                .padding(horizontal = if (narrow) 4.dp else 10.dp, vertical = 3.dp),
+                .padding(horizontal = if (tight) 2.dp else if (narrow) 4.dp else 10.dp, vertical = 3.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(5.dp),
+            horizontalArrangement = Arrangement.spacedBy(if (tight) 2.dp else 4.dp),
         ) {
-            if (showIcon) Canvas(Modifier.size(14.dp)) { drawCloud(fg) }
+            if (showIcon) Canvas(Modifier.size(if (narrow) 12.dp else 14.dp).testTag("weather-icon")) { drawCloud(fg) }
             Text(displayLabel, style = style, maxLines = 1, softWrap = false)
         }
     }
@@ -269,24 +261,51 @@ private fun DrawScope.drawCloud(c: Color) {
 fun TrainerSticker(state: LauncherState, s: Settings, size: String, hour: Int, live: Boolean) {
     val look = LocalLook.current
     val initial = s.name.codePoints().findFirst().let { if (it.isPresent) String(Character.toChars(it.asInt)) else "T" }
-    val avatar = @Composable { d: Int ->
+    val density = LocalDensity.current
+    val avatar = @Composable { d: androidx.compose.ui.unit.Dp ->
         val (bg, fg) = when {
             look.journal -> Color(0xfff5e7b6) to Color(0xff93674f)
             look.plastic -> Yellow to PlasticInk
             else -> Navy to Yellow
         }
+        // An inset version of the plate's corners remains visibly rectangular.
+        val shape = if (s.avatarShape == com.tito.titodex.launcher.AvatarShape.circle) CircleShape
+            else RoundedCornerShape(if (look.flat) 12.dp else 10.dp)
         Box(
-            Modifier.size(d.dp).clip(CircleShape)
+            Modifier.size(d).testTag("trainer-avatar").clip(shape)
                 .background(if (look.plastic) Brush.linearGradient(listOf(Color(0xffffd778), Color(0xffffac78))) else Brush.linearGradient(listOf(bg, bg)))
-                .then(if (look.journal) Modifier.border(3.dp, Paper, CircleShape).padding(3.dp).border(1.5.dp, Color(0xffb18168), CircleShape) else Modifier),
+                .then(if (look.journal) Modifier.border(2.dp, Paper, shape).padding(2.dp).border(1.dp, Color(0xffb18168), shape) else Modifier),
             contentAlignment = Alignment.Center,
-        ) { Text(initial, style = text((d * .44f).sp, FontWeight.ExtraBold, fg)) }
+        ) { OpticalText(initial, style = text((d.value * .44f).sp, FontWeight.ExtraBold, fg)) }
     }
-    val texts = @Composable { compact: Boolean, caption: Boolean ->
-        Column(Modifier.wrapContentWidth()) {
-            if (caption) Text("PLAYER CARD", style = text(8.5.sp, FontWeight.ExtraBold, look.ink.copy(alpha = if (look.flat) .7f else .55f), 1.6.sp), maxLines = 1)
-            Text(s.name, style = text(if (compact) 13.sp else if (caption) 22.sp else 18.sp, FontWeight.ExtraBold, look.ink), maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = if (compact) TextAlign.Center else TextAlign.Start)
-            if (!compact) Text(greeting(hour), style = text(12.sp, color = look.ink.copy(alpha = .8f)), maxLines = 1)
+    val identity = @Composable { availableHeight: androidx.compose.ui.unit.Dp, caption: Boolean ->
+        val title = text(if (caption) 22.sp else 20.sp, FontWeight.ExtraBold, look.ink)
+        val greetingStyleBase = text(14.sp, FontWeight.Bold, look.ink.copy(alpha = .8f))
+        val label = text(8.5.sp, FontWeight.ExtraBold, look.ink.copy(alpha = .6f), 1.6.sp)
+        val titleInk = textInk(s.name, title)
+        val greetingInk = textInk(greeting(hour), greetingStyleBase)
+        val labelInk = textInk("PLAYER CARD", label)
+        val gapPx = with(density) { 8.dp.toPx() }
+        val captionPx = if (caption) labelInk.height() + with(density) { 5.dp.toPx() } else 0f
+        val desired = titleInk.height() + greetingInk.height() + gapPx + captionPx
+        val fit = minOf(1f, with(density) { availableHeight.toPx() } / desired.coerceAtLeast(1f))
+        val titleStyle = title.copy(fontSize = title.fontSize * fit)
+        val greetingStyle = greetingStyleBase.copy(fontSize = greetingStyleBase.fontSize * fit)
+        val labelStyle = label.copy(fontSize = label.fontSize * fit)
+        val heightPx = textInk(s.name, titleStyle).height() + textInk(greeting(hour), greetingStyle).height() + gapPx * fit +
+            (if (caption) textInk("PLAYER CARD", labelStyle).height() + with(density) { 5.dp.toPx() } * fit else 0f)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            avatar(with(density) { heightPx.toDp() })
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f).testTag("trainer-identity")) {
+                if (caption) {
+                    OpticalText("PLAYER CARD", labelStyle)
+                    Spacer(Modifier.height((5f * fit).dp))
+                }
+                OpticalText(s.name, titleStyle, Modifier.testTag("trainer-name"))
+                Spacer(Modifier.height((8f * fit).dp))
+                OpticalText(greeting(hour), greetingStyle, Modifier.testTag("trainer-greeting"))
+            }
         }
     }
     BoxWithConstraints(
@@ -295,14 +314,15 @@ fun TrainerSticker(state: LauncherState, s: Settings, size: String, hour: Int, l
             .then(if (live) Modifier.padTarget(state, "trainer", "个人名片") { state.pop = Pop.Trainer(state.rects["trainer"] ?: androidx.compose.ui.geometry.Rect.Zero) } else Modifier)
             .plate(look, PlateKind.Trainer),
     ) {
-        val cardWidth = maxWidth
         val cardHeight = maxHeight
         when (size) {
             "s" -> Column(Modifier.fillMaxSize().padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                avatar(minOf(46, (cardHeight.value - 40).toInt()).coerceAtLeast(24)); Spacer(Modifier.height(3.dp)); texts(true, false)
+                avatar(minOf(46f, cardHeight.value - 40).coerceAtLeast(24f).dp)
+                Spacer(Modifier.height(4.dp))
+                OpticalText(s.name, text(13.sp, FontWeight.ExtraBold, look.ink))
             }
             "l" -> Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.Center) {
-                Row(verticalAlignment = Alignment.CenterVertically) { avatar(62); Spacer(Modifier.width(12.dp)); Box(Modifier.weight(1f)) { texts(false, true) } }
+                identity((cardHeight - 68.dp).coerceAtLeast(36.dp), true)
                 Spacer(Modifier.height(8.dp))
                 Box(Modifier.fillMaxWidth().drawBehind {
                     drawLine(look.ink.copy(alpha = .3f), Offset.Zero, Offset(this.size.width, 0f), 1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 4f)))
@@ -310,8 +330,8 @@ fun TrainerSticker(state: LauncherState, s: Settings, size: String, hour: Int, l
                     Text(s.motto.ifEmpty { "写一句今天的冒险宣言" }, style = text(12.sp, FontWeight.Normal, look.ink).copy(lineHeight = 17.sp))
                 }
             }
-            else -> Row(Modifier.fillMaxSize().padding(horizontal = 13.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                avatar(if (cardWidth < 200.dp || cardHeight < 80.dp) 38 else 50); Spacer(Modifier.width(8.dp)); Box(Modifier.weight(1f)) { texts(false, cardHeight >= 86.dp && cardWidth >= 210.dp) }
+            else -> Box(Modifier.fillMaxSize().padding(horizontal = 13.dp, vertical = 10.dp), contentAlignment = Alignment.CenterStart) {
+                identity((cardHeight - 20.dp).coerceAtLeast(24.dp), false)
             }
         }
         if (look.journal) Canvas(Modifier.align(Alignment.TopCenter).offset(y = (-9).dp).size(62.dp, 18.dp).rotate(-4f)) {

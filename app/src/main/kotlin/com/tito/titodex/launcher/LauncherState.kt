@@ -399,11 +399,11 @@ class LauncherState(
         if (app.id in settings.pinned) commit(settings.copy(pinned = settings.pinned - app.id), "已移出常玩：${app.label}")
     }
 
-    fun saveTrainer(name: String, motto: String) {
+    fun saveTrainer(name: String, motto: String, avatarShape: AvatarShape = settings.avatarShape) {
         pop = null
         val n = name.trim().ifEmpty { "玩家" }.take(20)
         val m = motto.trim().take(40)
-        commit(settings.copy(name = n, motto = m), "名片已更新")
+        commit(settings.copy(name = n, motto = m, avatarShape = avatarShape), "名片已更新")
     }
 
     // ---------------------------------------------------------------- editing

@@ -132,11 +132,11 @@ class LauncherUiTest {
         val (_, state) = launch(FakeDevice(settings.withLayout(Orient.square, layout).encode()))
         rule.runOnIdle { state.weather = WeatherReading(19.0, 0, 0L) }
         rule.waitForIdle()
-        val date = rule.onNodeWithText(dateLabel(java.util.Calendar.getInstance())).fetchSemanticsNode().boundsInRoot
+        val date = rule.onNodeWithText(dateLabel(java.util.Calendar.getInstance()).substringBefore(' ')).fetchSemanticsNode().boundsInRoot
         val weather = rule.onNodeWithText("19°").fetchSemanticsNode().boundsInRoot
-        // hdpi (1.5×): 16sp metadata with a 20dp line must not collapse under the large numerals.
-        assertTrue("date clipped: $date", date.height >= 30f)
-        assertTrue("weather clipped: $weather", weather.height >= 30f)
+        // hdpi (1.5×): the compact 14sp metadata still gets its full font line.
+        assertTrue("date clipped: $date", date.height >= 25f)
+        assertTrue("weather clipped: $weather", weather.height >= 25f)
         assertTrue("metadata below cell: $date / $weather", maxOf(date.bottom, weather.bottom) <= 196f)
     }
 

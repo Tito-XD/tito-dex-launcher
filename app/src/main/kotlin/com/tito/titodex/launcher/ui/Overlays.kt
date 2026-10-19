@@ -161,12 +161,18 @@ fun PopLayer(state: LauncherState, wDp: Float, hDp: Float) {
                 androidx.compose.runtime.DisposableEffect(Unit) { onDispose { focus.clearFocus(); keyboard?.hide() } }
                 var name by remember { mutableStateOf(state.settings.name) }
                 var motto by remember { mutableStateOf(state.settings.motto) }
+                var avatarShape by remember { mutableStateOf(state.settings.avatarShape) }
                 Text("个人名片", style = text(14.sp, FontWeight.ExtraBold, Navy), modifier = Modifier.padding(6.dp))
                 Text("称呼", style = text(11.sp, FontWeight.ExtraBold, Navy.copy(alpha = .6f)), modifier = Modifier.padding(horizontal = 2.dp))
                 Field(name, { name = it }, 20, Modifier.padding(top = 3.dp, bottom = 7.dp))
                 Text("一句话签名（完整尺寸显示）", style = text(11.sp, FontWeight.ExtraBold, Navy.copy(alpha = .6f)), modifier = Modifier.padding(horizontal = 2.dp))
                 Field(motto, { motto = it }, 40, Modifier.padding(top = 3.dp, bottom = 7.dp))
-                MenuItem(state, "p:save", "✓ 完成") { state.saveTrainer(name, motto) }
+                Text("头像形状", style = text(11.sp, FontWeight.ExtraBold, Navy.copy(alpha = .6f)), modifier = Modifier.padding(horizontal = 2.dp, vertical = 4.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    for (shape in com.tito.titodex.launcher.AvatarShape.entries)
+                        Chip(state, "p:avatar:${shape.name}", shape.label, on = avatarShape == shape) { avatarShape = shape }
+                }
+                MenuItem(state, "p:save", "✓ 完成") { state.saveTrainer(name, motto, avatarShape) }
                 Note("只保存在这台掌机上")
             }
             is Pop.Weather -> {

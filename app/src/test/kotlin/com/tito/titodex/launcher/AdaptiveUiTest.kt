@@ -141,9 +141,9 @@ class AdaptiveUiTest {
             val layouts = mutableListOf<TextLayoutResult>()
             assertTrue(action(layouts))
             val layout = layouts.single()
-            assertTrue("weather text clipped: $label size=${layout.size} line=${layout.getLineRight(0)} height=${layout.didOverflowHeight}",
+            assertTrue("weather text clipped: $label size=${layout.size} line=${layout.getLineRight(0)} height=${layout.didOverflowHeight} paragraph=${layout.multiParagraph.width}x${layout.multiParagraph.height} exceeded=${layout.multiParagraph.didExceedMaxLines} lines=${layout.lineCount} end=${layout.getLineEnd(0)} constraints=${layout.layoutInput.constraints}",
                 layout.getLineRight(0) <= layout.size.width + 1 && !layout.didOverflowHeight)
-            assertEquals(16f, layouts.single().layoutInput.style.fontSize.value, .01f)
+            assertEquals(if (state.layout().first { it.id == "clock" }.size == "v") 16f else 14f, layouts.single().layoutInput.style.fontSize.value, .01f)
         }
         val bounds = node.fetchSemanticsNode().boundsInRoot
         val clock = state.layout().first { it.id == "clock" }
@@ -171,10 +171,12 @@ class AdaptiveUiTest {
                 }
                 rule.waitForIdle()
                 assertWeatherFits(state, "${temperature.toInt()}°")
-                val date = rule.onNodeWithText(dateLabel(java.util.Calendar.getInstance())).fetchSemanticsNode().boundsInRoot
+                val date = rule.onNodeWithText(dateLabel(java.util.Calendar.getInstance()).substringBefore(' ')).fetchSemanticsNode().boundsInRoot
                 val wx = rule.onNodeWithText("${temperature.toInt()}°").fetchSemanticsNode().boundsInRoot
                 assertTrue("date and weather must share the second line", kotlin.math.abs(date.center.y - wx.center.y) < 6f)
                 assertTrue("weather must follow the date without overlap", date.right <= wx.left)
+                rule.onNodeWithTag("weather-icon", useUnmergedTree = true).assertIsDisplayed()
+                rule.onNodeWithTag("clock-weekday").assertIsDisplayed()
                 if (temperature < 0) capture("portrait-weather-${theme.name}")
             }
         }

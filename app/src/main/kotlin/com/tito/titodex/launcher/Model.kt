@@ -27,6 +27,7 @@ enum class Orient(val cols: Int, val rows: Int, val landscape: Boolean = false) 
 }
 
 enum class Template(val label: String) { roam("漫游"), panel("面板"), quiet("留白") }
+enum class AvatarShape(val label: String) { rounded("圆角矩形"), circle("圆形") }
 
 data class City(val name: String, val lat: Double, val lon: Double) {
     fun toJson(): JSONObject = JSONObject().put("name", name).put("lat", lat).put("lon", lon)
@@ -63,6 +64,7 @@ data class Settings(
     val photo: String? = null,
     val name: String = "训练家",
     val motto: String = "今天，也有新的冒险。",
+    val avatarShape: AvatarShape = AvatarShape.rounded,
     val city: City? = null,
     val use24Hour: Boolean = true,
     val showWeather: Boolean = true,
@@ -116,6 +118,7 @@ data class Settings(
             .put("photo", photo ?: JSONObject.NULL)
             .put("name", name)
             .put("motto", motto)
+            .put("avatarShape", avatarShape.name)
             .put("city", city?.toJson() ?: JSONObject.NULL)
             .put("use24Hour", use24Hour)
             .put("showWeather", showWeather)
@@ -159,6 +162,7 @@ data class Settings(
                 theme = enumOf(json.opt("style"), LauncherTheme.journal),
                 wallpaper = enumOf(json.opt("wallpaper"), Wall.none),
                 effect = enumOf(json.opt("effect"), Effect.clear),
+                avatarShape = enumOf(json.opt("avatarShape"), AvatarShape.rounded),
                 photo = json.opt("photo") as? String,
                 city = City.parse(json.opt("city")),
                 use24Hour = json.opt("use24Hour") != false,
