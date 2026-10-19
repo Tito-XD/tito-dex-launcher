@@ -158,7 +158,7 @@ fun ClockSticker(state: LauncherState, s: Settings, size: String, now: Calendar,
                         modifier = Modifier.testTag("clock-time"))
                 }
             }
-            Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 horizontalTime(Modifier.weight(1f).fillMaxWidth())
                 Row(Modifier.fillMaxWidth().heightIn(min = 24.dp).testTag("clock-metadata"),
                     horizontalArrangement = Arrangement.spacedBy(5.dp, Alignment.CenterHorizontally),
@@ -225,7 +225,12 @@ private fun WeatherChip(state: LauncherState, s: Settings, weather: WeatherReadi
     val density = LocalDensity.current
     val measurer = rememberTextMeasurer()
     val style = text(size, FontWeight.ExtraBold, fg).copy(platformStyle = PlatformTextStyle(includeFontPadding = false))
-    BoxWithConstraints {
+    BoxWithConstraints(
+        Modifier.heightIn(min = 24.dp).then(if (live) Modifier.padTarget(state, "wx", "天气", LauncherCorners.small.value) {
+            state.pop = Pop.Weather(state.rects["wx"] ?: androidx.compose.ui.geometry.Rect.Zero)
+        } else Modifier),
+        contentAlignment = Alignment.Center,
+    ) {
         val labelWidth = with(density) { measurer.measure(label, style, softWrap = false).size.width.toDp() }
         val showIcon = city != null && weather != null
         val fullWidth = labelWidth + if (showIcon) 38.dp else 20.dp
@@ -234,28 +239,18 @@ private fun WeatherChip(state: LauncherState, s: Settings, weather: WeatherReadi
         val tight = narrow && showIcon && labelWidth + 24.dp > maxWidth
         val displayLabel = if (city == null && narrow) "天气" else label
         Row(
-            (if (live) Modifier.padTarget(state, "wx", "天气", LauncherCorners.small.value) { state.pop = Pop.Weather(state.rects["wx"] ?: androidx.compose.ui.geometry.Rect.Zero) } else Modifier)
-                .testTag("clock-weather")
-                .heightIn(min = 24.dp)
+            Modifier.testTag("clock-weather")
+                .heightIn(min = 22.dp)
                 .background(bg, shape)
                 .then(if (look.journal) Modifier.border(1.25.dp, JournalLine, shape) else if (look.plastic) Modifier.border(1.dp, Color.White.copy(alpha = .7f), shape) else Modifier)
                 .padding(horizontal = if (tight) 2.dp else if (narrow) 4.dp else 10.dp, vertical = 3.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(if (tight) 2.dp else 4.dp),
         ) {
-            if (showIcon) Canvas(Modifier.size(if (narrow) 12.dp else 14.dp).testTag("weather-icon")) { drawCloud(fg) }
+            if (showIcon) WeatherGlyph(weather!!.code, Modifier.size(if (narrow) 12.dp else 14.dp).testTag("weather-icon"), monochrome = fg)
             OpticalText(displayLabel, style, Modifier.testTag("weather-temperature"))
         }
     }
-}
-
-private fun DrawScope.drawCloud(c: Color) {
-    val w = size.width
-    // Visible bounds are symmetric about the Canvas center, including the cloud's flat base.
-    drawCircle(c, w * .22f, Offset(w * .30f, w * .63f))
-    drawCircle(c, w * .32f, Offset(w * .50f, w * .47f))
-    drawCircle(c, w * .22f, Offset(w * .70f, w * .63f))
-    drawRect(c, Offset(w * .3f, w * .6f), Size(w * .4f, w * .25f))
 }
 
 // ------------------------------------------------------------------ trainer

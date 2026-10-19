@@ -64,7 +64,6 @@ import com.tito.titodex.launcher.R
 import com.tito.titodex.launcher.SystemEntry
 import com.tito.titodex.launcher.TITODEX_PACKAGE
 import com.tito.titodex.launcher.WidgetProvider
-import com.tito.titodex.launcher.weatherDescription
 import kotlin.math.roundToInt
 
 private val Shadowy = Color(0x5908101c)
@@ -72,7 +71,7 @@ private val Shadowy = Color(0x5908101c)
 @Composable
 private fun Modifier.card(look: Look): Modifier {
     val shape = plateShape()
-    val bg = when (look.theme) { LauncherTheme.journal -> Paper; LauncherTheme.plastic -> Color(0xf2f2f8fa); LauncherTheme.flat -> FlatPaper }
+    val bg = when (look.theme) { LauncherTheme.journal -> Paper; LauncherTheme.plastic -> Color(0xfff2f8fa); LauncherTheme.flat -> FlatPaper }
     return this.shadow(14.dp, shape, ambientColor = Shadowy, spotColor = Shadowy).background(bg, shape)
         .then(if (look.journal) Modifier.border(1.25.dp, Navy.copy(alpha = .25f), shape) else if (look.plastic) Modifier.border(1.dp, Color.White.copy(alpha = .8f), shape) else Modifier)
 }
@@ -180,43 +179,23 @@ fun PopLayer(state: LauncherState, wDp: Float, hDp: Float) {
             is Pop.Weather -> {
                 val city = state.settings.city
                 val w = state.weather
-                Text(
-                    w?.let { "${it.temperature.roundToInt()}° ${it.description}" } ?: state.weatherError ?: if (city == null) "添加天气" else "正在获取…",
-                    style = text(18.sp, FontWeight.ExtraBold, Navy), modifier = Modifier.padding(start = 6.dp, top = 4.dp, bottom = 2.dp),
-                )
-                if (w == null || (w.hours.isEmpty() && w.days.isEmpty())) {
-                    Note(if (w == null && state.weatherError == null && city != null) "正在获取最近几小时和未来几天" else "暂时没有预报")
-                } else {
-                    if (w.hours.isNotEmpty()) {
-                        Text("未来几小时", style = text(14.sp, FontWeight.ExtraBold, Navy.copy(alpha = .55f)), modifier = Modifier.padding(start = 6.dp, top = 4.dp))
-                        Row(Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                            w.hours.forEach { hour ->
-                                Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Text(hour.label, style = text(12.sp, FontWeight.Bold, Navy.copy(alpha = .7f)))
-                                    Text("${hour.temperature}°", style = text(16.sp, FontWeight.ExtraBold, Navy))
-                                    Text(weatherDescription(hour.code), style = text(11.sp, FontWeight.Bold, Navy.copy(alpha = .75f)), maxLines = 1)
-                                }
-                            }
-                        }
-                    }
-                    if (w.days.isNotEmpty()) {
-                        Text("未来几天", style = text(14.sp, FontWeight.ExtraBold, Navy.copy(alpha = .55f)), modifier = Modifier.padding(start = 6.dp))
-                        Row(Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 4.dp)) {
-                            w.days.forEach { day ->
-                                Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Text(day.label, style = text(13.sp, FontWeight.ExtraBold, Navy))
-                                    Text("${day.high}°", style = text(15.sp, FontWeight.ExtraBold, Navy))
-                                    Text("${day.low}°", style = text(12.sp, FontWeight.Bold, Navy.copy(alpha = .6f)))
-                                    Text(weatherDescription(day.code), style = text(12.sp, color = Navy), maxLines = 1)
-                                }
-                            }
-                        }
-                    }
+                if (w != null) WeatherForecast(w, city?.name)
+                else {
+                    Text(state.weatherError ?: if (city == null) "添加天气" else "正在获取…",
+                        style = text(18.sp, FontWeight.ExtraBold, Navy), modifier = Modifier.padding(6.dp))
+                    Note(when {
+                        city == null -> "选择城市，查看当前天气和最近预报"
+                        state.weatherError != null -> "可以重试，或更换城市"
+                        else -> "正在获取最近几小时和未来几天"
+                    })
                 }
                 if (w != null && state.weatherError != null) Note("刷新失败，显示上次获取的预报")
-                if (city != null) MenuItem(state, "p:r", "↻ 刷新") { state.refreshWeather(force = true) }
-                MenuItem(state, "p:c", if (city == null) "⌖ 选择城市" else "⌖ 更换城市") { state.pop = null; state.cityDialog = true }
-                if (city != null) MenuItem(state, "p:o", "✕ 关闭天气") { state.pop = null; state.setCity(null) }
+                Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (city != null) Chip(state, "p:r", "刷新", tinted = true, label = "↻ 刷新") { state.refreshWeather(force = true) }
+                    Chip(state, "p:c", if (city == null) "选择城市" else "更换城市", tinted = true,
+                        label = if (city == null) "⌖ 选择城市" else "⌖ 更换城市") { state.pop = null; state.cityDialog = true }
+                    if (city != null) Chip(state, "p:o", "关闭天气", tinted = true, label = "✕ 关闭天气") { state.pop = null; state.setCity(null) }
+                }
             }
         }
     }

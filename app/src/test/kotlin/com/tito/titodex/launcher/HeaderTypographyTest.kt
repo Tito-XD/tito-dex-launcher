@@ -94,6 +94,8 @@ class HeaderTypographyTest {
         val metadata = rule.onNodeWithTag("clock-metadata").fetchSemanticsNode().boundsInRoot
         val date = rule.onNodeWithText("10/19").fetchSemanticsNode().boundsInRoot
         val weather = rule.onNodeWithTag("clock-weather").fetchSemanticsNode().boundsInRoot
+        assertTrue("leave visible air between the time and weather sticker",
+            weather.top - digits.bottom >= 9 * rule.activity.resources.displayMetrics.density)
         assertEquals("painted time should be centered in its cell", metadata.center.x, digits.center.x, 3f)
         assertEquals("date, weekday and weather form one centered row", metadata.center.x, (date.left + weather.right) / 2, 2f)
         val usableWidth = (state.cellDp().first * 2 - 18) * rule.activity.resources.displayMetrics.density
@@ -176,6 +178,12 @@ class HeaderTypographyTest {
                 rule.onNodeWithContentDescription(label).performClick()
                 val bitmap = capture("popover-$name-${theme.name}")
                 val bounds = rule.onNodeWithTag("anchored-popover").fetchSemanticsNode().boundsInRoot
+                if (name == "weather") {
+                    rule.onNodeWithTag("forecast-current-icon").assertIsDisplayed()
+                    rule.onNodeWithTag("forecast-hour-0").assertIsDisplayed()
+                    rule.onNodeWithTag("forecast-day-0").assertIsDisplayed()
+                    rule.onNodeWithContentDescription("今天气温范围：21到28度").assertExists()
+                }
                 // A fixed 16dp corner leaves this point inside the panel even on a tall forecast.
                 // The former percentage-radius overload cuts deeply into this point.
                 val color = bitmap.getPixel((bounds.left + 10 * density).toInt(), (bounds.top + 4 * density).toInt())
@@ -185,5 +193,28 @@ class HeaderTypographyTest {
                 assertNull(state.pop)
             }
         }
+    }
+
+    @Test @Config(qualifiers = "w640dp-h360dp-hdpi")
+    fun illustratedForecastActionsRemainReachableOnShortLandscape() {
+        val (_, state) = launch()
+        rule.runOnIdle {
+            state.weather = WeatherReading(26.0, 2, 0L,
+                List(6) { HourForecast("${10 + it}时", 24 + it, listOf(2, 0, 3, 61, 95, 45)[it]) },
+                List(4) { DayForecast(if (it == 0) "今天" else "周${it + 2}", 28 - it, 20 - it, listOf(3, 61, 0, 95)[it]) })
+        }
+        val before = state.settings
+        rule.onNodeWithContentDescription("天气").performClick()
+        capture("forecast-landscape").recycle()
+        rule.onNodeWithContentDescription("⌖ 更换城市").performScrollTo().performClick()
+        assertTrue(state.cityDialog)
+        rule.runOnIdle { state.back() }
+        assertFalse(state.cityDialog)
+        rule.onNodeWithContentDescription("天气").performClick()
+        rule.onNodeWithContentDescription("✕ 关闭天气").performScrollTo().performClick()
+        assertNull(state.pop)
+        assertEquals(before.copy(city = null), state.settings)
+        rule.onNodeWithContentDescription("撤销").performClick()
+        assertEquals(before, state.settings)
     }
 }
