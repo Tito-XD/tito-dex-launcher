@@ -2,7 +2,7 @@
 
 2026-10-19 · `0.3.2-adaptive.8` / versionCode 14。
 
-本次实现位于 `codex/launcher-adaptive`，从 Launcher 动效预览分支分出，未改变 Flutter App。设备安装、真机验收和线上发布仍须单独记录；本次没有操作用户 RG。
+本轮实现原位于 `codex/launcher-adaptive`，现已独立到 `Tito-XD/tito-dex-launcher` 的根目录，保留相关提交历史，未改变 Flutter App。设备安装、真机验收和线上发布仍须单独记录；本次没有操作用户 RG。
 
 ## 系统界面与操作区
 
@@ -89,4 +89,4 @@ schema 4 新增主应用和 `pending` 字段；旧字段和系统小组件 host 
 
 ## 仓库拆分建议
 
-适合在本轮验收后拆为独立 Launcher 仓库，保留 Launcher 子目录的提交历史，补齐独立 CI、设计说明和发布流程。保持当前安装包名、签名、版本递增和偏好迁移连续；TitoDex 仅作为可选主应用。共享主题约定可以同步文档，不需要让原生 Launcher 依赖整个 Flutter 工程。此次没有创建新仓库或迁移 Git 历史。
+已按用户要求拆到 `Tito-XD/tito-dex-launcher`，保留 Launcher 相关历史，补齐独立 CI、设计说明和发布流程。安装包名、签名、versionCode 与偏好保持连续；TitoDex 仅为可选主应用。原仓库工作区保持不变。来源映射见 `docs/MIGRATION.md`。

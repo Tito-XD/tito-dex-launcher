@@ -1,3 +1,14 @@
+# 0.3.2-adaptive.8 独立仓库验证（2026-10-19）
+
+- `launcher/` 已提取为独立原生工程，应用、Gradle wrapper 和设备脚本与原目录 Git tree 一致。提取前后根树一致，12 次 Launcher 提交保留；映射见 `docs/MIGRATION.md`。
+- 在新仓库根目录完整运行 80 项 JVM / 原生组件检查，全部通过；Debug 与 Release 构建和 Release lint 通过。
+- 两包均为 `com.tito.titodex.launcher` / `0.3.2-adaptive.8` / code 14，签名验证与 16KB zip alignment 检查通过。证书 SHA-256 为 `32b5a8a65a081518b592a49a1ce66cacbcdfe1982850b414721fa51465a65e0f`，保持原开发预览升级链。
+- 三主题组件截图使用模拟天气，覆盖时钟/元信息视觉居中、天气卡片图标、顶部城市入口和右下叉号。触屏关闭不改城市或偏好；无城市/加载中/失败时按键关闭不改设置；矮横屏操作可滚动到达。
+- 发布包、源码提交、SHA-256 与设备状态随 Pre-release 的 `build-verification.json`、`SHA256SUMS.txt` 记录。CI 检查状态由独立仓库 Actions 展示，不等于真机验收。
+- 本版没有安装 RG，没有改变默认 HOME、设备偏好或系统壁纸；没有修改原仓库 App 与其他任务代码。以下旧版真机记录仅证明各自所标注版本。
+
+---
+
 # 0.3.0 Launcher 专属球形 TitoDex 徽章（2026-10-18）
 
 ## 0.3.1-motion.1 原生动效预发布

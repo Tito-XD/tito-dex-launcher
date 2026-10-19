@@ -1,8 +1,8 @@
 # TitoDex Launcher
 
-Read `../docs/AI_CONTEXT.md`, `../docs/DESIGN_SYSTEM.md`, then `README.md` and `HANDOFF.md`.
+Read `docs/AI_CONTEXT.md`, `docs/DESIGN_SYSTEM.md`, then `README.md` and `HANDOFF.md`.
 
-This independent Android launcher is explicitly authorized product scope. Keep changes in `launcher/`; do not turn the existing TitoDex host APK into a launcher or change its release version. Launcher package ID is `com.tito.titodex.launcher`. As authorized on 2026-10-19, the primary entry is replaceable and hideable; existing users retain `com.tito.titodex` by default. Preserve its `tito` storage ID. See `ADAPTIVE_LAYOUT.md` for system-bar insets and independently persisted screen profiles.
+This is the independent Launcher repository, extracted from the former `launcher/` subdirectory. The native project is now at repository root. Do not depend on, modify, or package the separate TitoDex Flutter App. Launcher package ID is `com.tito.titodex.launcher`. As authorized on 2026-10-19, the primary entry is replaceable and hideable; existing users retain `com.tito.titodex` by default. Preserve its `tito` storage ID. See `ADAPTIVE_LAYOUT.md` for system-bar insets and independently persisted screen profiles.
 
 Preserve Chinese UI, the three existing theme identities, local-only preferences and opt-in city weather. Never fabricate weather, infer private trainer data, automatically replace the default HOME app, or change the system wallpaper. Keep Android HOME/back behavior, D-pad focus, and access to alternate home/system settings working.
 
