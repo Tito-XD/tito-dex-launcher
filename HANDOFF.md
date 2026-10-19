@@ -9,6 +9,8 @@
 
 ## 本次预发布
 
+已发布 [v0.3.2-adaptive.8](https://github.com/Tito-XD/tito-dex-launcher/releases/tag/v0.3.2-adaptive.8)，保持 Pre-release，不设为 Latest。发布源码为 `19774c51b223c2c1036428ef0da9851ea7e7920c`；[独立 CI](https://github.com/Tito-XD/tito-dex-launcher/actions/runs/39199492841) 已通过。三个公开附件已下载回验，APK SHA-256：`44b14acc338f1717a73c5ce4d7c991c483b5d51e23dcc37fceb16b2aa3741e01`。
+
 `0.3.2-adaptive.8` / code 14。包含安全留边、独立屏幕布局、可替换主入口、三主题回调、连续动效、时钟与头像可见对齐、图形天气和图标操作。
 
 天气顶部是楼房图标与城市名，左下刷新，右下叉号只关闭弹窗，保留城市、预报与桌面天气。三主题一致；无城市、加载中和错误状态也能关闭。原有天气停用入口仍在设置里。

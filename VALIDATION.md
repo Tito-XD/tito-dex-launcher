@@ -1,5 +1,7 @@
 # 0.3.2-adaptive.8 独立仓库验证（2026-10-19）
 
+[Pre-release 已发布](https://github.com/Tito-XD/tito-dex-launcher/releases/tag/v0.3.2-adaptive.8)。源码 tag 指向 `19774c51b223c2c1036428ef0da9851ea7e7920c`，APK 内嵌 revision 一致；APK / 校验和 / 验证记录均完成 GitHub 下载回验。[独立 CI](https://github.com/Tito-XD/tito-dex-launcher/actions/runs/39199492841) 成功。APK SHA-256：`44b14acc338f1717a73c5ce4d7c991c483b5d51e23dcc37fceb16b2aa3741e01`。
+
 - `launcher/` 已提取为独立原生工程，应用、Gradle wrapper 和设备脚本与原目录 Git tree 一致。提取前后根树一致，12 次 Launcher 提交保留；映射见 `docs/MIGRATION.md`。
 - 在新仓库根目录完整运行 80 项 JVM / 原生组件检查，全部通过；Debug 与 Release 构建和 Release lint 通过。
 - 两包均为 `com.tito.titodex.launcher` / `0.3.2-adaptive.8` / code 14，签名验证与 16KB zip alignment 检查通过。证书 SHA-256 为 `32b5a8a65a081518b592a49a1ce66cacbcdfe1982850b414721fa51465a65e0f`，保持原开发预览升级链。
