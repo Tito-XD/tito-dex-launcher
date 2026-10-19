@@ -90,6 +90,8 @@ fun ClockSticker(state: LauncherState, s: Settings, size: String, now: Calendar,
     // Reserve space for readable metadata first. Only the clock numerals adapt
     // to the available cell; never scale the date/weather as a rendered group.
     BoxWithConstraints(Modifier.fillMaxSize().padding(horizontal = 4.dp), contentAlignment = Alignment.CenterStart) {
+        val narrowDate = maxWidth < 190.dp
+        val narrowWeather = maxWidth < 210.dp
         val banner = size == "w"
         val preferred = when { banner -> 74f; size == "l" -> 64f; else -> 50f }
         val numberSize = min(preferred, ((maxHeight.value - if (banner) 8f else 38f) / density.fontScale).coerceAtLeast(24f))
@@ -156,8 +158,8 @@ fun ClockSticker(state: LauncherState, s: Settings, size: String, now: Calendar,
                         maxLines = 1, softWrap = false)
                 }
                 Row(Modifier.heightIn(min = 36.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    DateStamp(dateLabel(now), metaSize)
-                    if (s.showWeather) WeatherChip(state, s, weather, metaSize, live)
+                    DateStamp(dateLabel(now), metaSize, compact = narrowDate)
+                    if (s.showWeather) WeatherChip(state, s, weather, metaSize, live, compact = narrowWeather)
                 }
             }
         }
@@ -201,14 +203,14 @@ private fun CompactDateStamp(now: Calendar) {
 }
 
 @Composable
-private fun DateStamp(label: String, size: androidx.compose.ui.unit.TextUnit) {
+private fun DateStamp(label: String, size: androidx.compose.ui.unit.TextUnit, compact: Boolean = false) {
     val look = LocalLook.current
     when {
         look.journal -> Text(
             label, style = text(size, color = look.bgInk), maxLines = 1, softWrap = false,
             modifier = Modifier.rotate(-2f).drawBehind {
                 drawRoundRect(look.bgInk, cornerRadius = CornerRadius(6.dp.toPx()), style = Stroke(1.5.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(5f, 4f))))
-            }.padding(horizontal = 7.dp, vertical = 2.dp),
+            }.padding(horizontal = if (compact) 3.dp else 7.dp, vertical = 2.dp),
         )
         look.flat -> Text(label, style = text(size, FontWeight.ExtraBold, Cream), maxLines = 1, softWrap = false, modifier = Modifier.background(Navy, RoundedCornerShape(12.dp)).padding(horizontal = 10.dp, vertical = 3.dp))
         else -> Text(label, style = text(size, color = look.bgInk), maxLines = 1, softWrap = false)
@@ -216,11 +218,11 @@ private fun DateStamp(label: String, size: androidx.compose.ui.unit.TextUnit) {
 }
 
 @Composable
-private fun WeatherChip(state: LauncherState, s: Settings, weather: WeatherReading?, size: androidx.compose.ui.unit.TextUnit, live: Boolean) {
+private fun WeatherChip(state: LauncherState, s: Settings, weather: WeatherReading?, size: androidx.compose.ui.unit.TextUnit, live: Boolean, compact: Boolean = false) {
     val look = LocalLook.current
     val city = s.city
     val label = when {
-        city == null -> "＋ 天气"
+        city == null -> if (compact) "☀" else "＋ 天气"
         weather == null -> if (state.weatherError != null) "—" else "…"
         else -> "${weather.temperature.roundToInt()}°"
     }
@@ -233,11 +235,11 @@ private fun WeatherChip(state: LauncherState, s: Settings, weather: WeatherReadi
         (if (live) Modifier.padTarget(state, "wx", "天气") { state.pop = Pop.Weather(state.rects["wx"] ?: androidx.compose.ui.geometry.Rect.Zero) } else Modifier)
             .background(bg, shape)
             .then(if (look.journal) Modifier.border(1.25.dp, JournalLine, shape) else if (look.plastic) Modifier.border(1.dp, Color.White.copy(alpha = .7f), shape) else Modifier)
-            .padding(start = if (look.journal) 8.dp else 10.dp, end = 10.dp, top = 3.dp, bottom = 3.dp),
+            .padding(start = if (compact) 6.dp else if (look.journal) 8.dp else 10.dp, end = if (compact) 6.dp else 10.dp, top = 3.dp, bottom = 3.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(5.dp),
     ) {
-        if (city != null && weather != null) Canvas(Modifier.size(14.dp)) { drawCloud(fg) }
+        if (city != null && weather != null && !compact) Canvas(Modifier.size(14.dp)) { drawCloud(fg) }
         Text(label, style = text(size, FontWeight.ExtraBold, fg), maxLines = 1, softWrap = false)
     }
 }
@@ -269,25 +271,27 @@ fun TrainerSticker(state: LauncherState, s: Settings, size: String, hour: Int, l
             contentAlignment = Alignment.Center,
         ) { Text(initial, style = text((d * .44f).sp, FontWeight.ExtraBold, fg)) }
     }
-    val texts = @Composable { compact: Boolean ->
+    val texts = @Composable { compact: Boolean, caption: Boolean ->
         Column(Modifier.wrapContentWidth()) {
-            if (!compact) Text("TRAINER CARD", style = text(8.5.sp, FontWeight.ExtraBold, look.ink.copy(alpha = if (look.flat) .7f else .55f), 1.6.sp))
-            Text(s.name, style = text(if (compact) 13.sp else 22.sp, FontWeight.ExtraBold, look.ink), maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = if (compact) TextAlign.Center else TextAlign.Start)
-            if (!compact) Text(greeting(hour), style = text(12.sp, color = look.ink.copy(alpha = .8f)))
+            if (caption) Text("PLAYER CARD", style = text(8.5.sp, FontWeight.ExtraBold, look.ink.copy(alpha = if (look.flat) .7f else .55f), 1.6.sp), maxLines = 1)
+            Text(s.name, style = text(if (compact) 13.sp else if (caption) 22.sp else 18.sp, FontWeight.ExtraBold, look.ink), maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = if (compact) TextAlign.Center else TextAlign.Start)
+            if (!compact) Text(greeting(hour), style = text(12.sp, color = look.ink.copy(alpha = .8f)), maxLines = 1)
         }
     }
-    Box(
+    BoxWithConstraints(
         Modifier.fillMaxSize()
             .then(if (look.journal) Modifier.rotate(-1.4f) else Modifier)
-            .then(if (live) Modifier.padTarget(state, "trainer", "Trainer Card") { state.pop = Pop.Trainer(state.rects["trainer"] ?: androidx.compose.ui.geometry.Rect.Zero) } else Modifier)
+            .then(if (live) Modifier.padTarget(state, "trainer", "个人名片") { state.pop = Pop.Trainer(state.rects["trainer"] ?: androidx.compose.ui.geometry.Rect.Zero) } else Modifier)
             .plate(look, PlateKind.Trainer),
     ) {
+        val cardWidth = maxWidth
+        val cardHeight = maxHeight
         when (size) {
             "s" -> Column(Modifier.fillMaxSize().padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                avatar(46); Spacer(Modifier.height(5.dp)); texts(true)
+                avatar(minOf(46, (cardHeight.value - 40).toInt()).coerceAtLeast(24)); Spacer(Modifier.height(3.dp)); texts(true, false)
             }
             "l" -> Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.Center) {
-                Row(verticalAlignment = Alignment.CenterVertically) { avatar(62); Spacer(Modifier.width(12.dp)); texts(false) }
+                Row(verticalAlignment = Alignment.CenterVertically) { avatar(62); Spacer(Modifier.width(12.dp)); Box(Modifier.weight(1f)) { texts(false, true) } }
                 Spacer(Modifier.height(8.dp))
                 Box(Modifier.fillMaxWidth().drawBehind {
                     drawLine(look.ink.copy(alpha = .3f), Offset.Zero, Offset(this.size.width, 0f), 1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 4f)))
@@ -296,7 +300,7 @@ fun TrainerSticker(state: LauncherState, s: Settings, size: String, hour: Int, l
                 }
             }
             else -> Row(Modifier.fillMaxSize().padding(horizontal = 13.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                avatar(50); Spacer(Modifier.width(11.dp)); texts(false)
+                avatar(if (cardWidth < 200.dp || cardHeight < 80.dp) 38 else 50); Spacer(Modifier.width(8.dp)); Box(Modifier.weight(1f)) { texts(false, cardHeight >= 86.dp && cardWidth >= 210.dp) }
             }
         }
         if (look.journal) Canvas(Modifier.align(Alignment.TopCenter).offset(y = (-9).dp).size(62.dp, 18.dp).rotate(-4f)) {
@@ -378,21 +382,21 @@ fun TitoEmblem(d: Int) {
 @Composable
 fun TitoSticker(state: LauncherState, size: String, live: Boolean) {
     val look = LocalLook.current
-    val m = if (live) Modifier.padTarget(state, "tito", "打开 TitoDex", cornerDp = 24f) { state.launchTitoDex() } else Modifier
-    if (size == "m") {
-        Row(m.fillMaxSize().plate(look, PlateKind.Tito).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-            TitoEmblem(60)
-            Spacer(Modifier.width(12.dp))
-            Column {
-                Text("TitoDex", style = text(19.sp, FontWeight.ExtraBold, look.ink))
-                Text("继续你的旅程", style = text(12.sp, color = look.ink.copy(alpha = .75f)))
+    val title = state.primaryTitle
+    val m = if (live) Modifier.padTarget(state, "tito", "打开 $title", cornerDp = 24f) { state.launchTitoDex() } else Modifier
+    BoxWithConstraints(m.fillMaxSize()) {
+        val diameter = minOf(if (size == "m") 60f else 76f, maxHeight.value - 24f, maxWidth.value - 8f).coerceAtLeast(24f).toInt()
+        if (size == "m") Row(Modifier.fillMaxSize().plate(look, PlateKind.Tito).padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            PrimaryBadge(state, diameter)
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text(title, style = text(17.sp, FontWeight.ExtraBold, look.ink), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                Text("主应用", style = text(12.sp, color = look.ink.copy(alpha = .75f)))
             }
-        }
-    } else {
-        Column(m.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-            TitoEmblem(76)
+        } else Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+            PrimaryBadge(state, diameter)
             Spacer(Modifier.height(3.dp))
-            Text("TitoDex", style = text(13.sp, FontWeight.ExtraBold, look.bgInk))
+            Text(title, style = text(13.sp, FontWeight.ExtraBold, look.bgInk), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
         }
     }
 }
@@ -423,16 +427,17 @@ fun IconTile(
     icon: ImageBitmap?, label: String, ink: Color, modifier: Modifier = Modifier, width: Int = 74, height: Int = 84,
     badge: String? = null, letter: String? = null, star: Boolean = false, check: Boolean? = null, lifted: Boolean = false, insertBefore: Boolean = false, insertAfter: Boolean = false,
 ) {
-    Box(modifier.size(width.dp, height.dp).drawBehind {
+    BoxWithConstraints(modifier.size(width.dp, height.dp).drawBehind {
         val bar = 3.dp.toPx()
         if (insertBefore) drawRoundRect(Coral, Offset(-bar / 2, 12.dp.toPx()), Size(bar, size.height - 30.dp.toPx()), CornerRadius(2.dp.toPx()))
         if (insertAfter) drawRoundRect(Coral, Offset(size.width - bar / 2, 12.dp.toPx()), Size(bar, size.height - 30.dp.toPx()), CornerRadius(2.dp.toPx()))
     }) {
+        val iconSize = minOf(50, (maxHeight.value - 28).toInt()).coerceAtLeast(24)
         Column(
             Modifier.fillMaxSize().alpha(if (lifted) .25f else 1f),
             horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
         ) {
-            AppIcon(icon, label)
+            AppIcon(icon, label, iconSize)
             Spacer(Modifier.height(5.dp))
             Text(label, style = text(11.sp, color = ink), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.width(70.dp), textAlign = TextAlign.Center)
         }
@@ -450,15 +455,15 @@ fun IconTile(
 
 @Composable
 fun DashedTile(glyph: String, label: String, ink: Color, modifier: Modifier) {
-    Column(modifier.size(74.dp, 84.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-        Box(
-            Modifier.size(50.dp).drawBehind {
+    BoxWithConstraints(modifier.size(74.dp, 84.dp)) {
+        val iconSize = minOf(50f, maxHeight.value - 28f).coerceAtLeast(24f)
+        Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+            Box(Modifier.size(iconSize.dp).drawBehind {
                 drawRoundRect(ink, cornerRadius = CornerRadius(14.dp.toPx()), style = Stroke(1.6.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 5f))))
-            },
-            contentAlignment = Alignment.Center,
-        ) { Text(glyph, style = text(18.sp, FontWeight.ExtraBold, ink)) }
-        Spacer(Modifier.height(5.dp))
-        Text(label, style = text(11.sp, color = ink), maxLines = 1)
+            }, contentAlignment = Alignment.Center) { Text(glyph, style = text(18.sp, FontWeight.ExtraBold, ink)) }
+            Spacer(Modifier.height(4.dp))
+            Text(label, style = text(11.sp, color = ink), maxLines = 1)
+        }
     }
 }
 
@@ -546,6 +551,7 @@ fun WidgetSticker(state: LauncherState, appWidgetId: Int, live: Boolean, label: 
         return
     }
     val bridge = state.device.widgets
+    val widgetDensity = LocalDensity.current.density
     Box(Modifier.fillMaxSize().clip(shape)) {
         if (bridge == null) return@Box
         AndroidView(
@@ -555,7 +561,9 @@ fun WidgetSticker(state: LauncherState, appWidgetId: Int, live: Boolean, label: 
                 (v.parent as? ViewGroup)?.removeView(v)
                 v
             },
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().onSizeChanged { dimensions ->
+                bridge.resize(appWidgetId, (dimensions.width / widgetDensity).toInt(), (dimensions.height / widgetDensity).toInt())
+            },
         )
     }
 }

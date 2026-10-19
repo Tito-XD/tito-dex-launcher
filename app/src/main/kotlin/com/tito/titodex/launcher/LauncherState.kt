@@ -53,7 +53,11 @@ class LauncherState(
     var tab by mutableStateOf(EditTab.layout)
     var selected by mutableStateOf<String?>(null)
     var holding by mutableStateOf<String?>(null)
+    private var holdStart: Settings? = null
+    private var holdUndoDepth = 0
     var picker by mutableStateOf(false)
+    var primaryPicker by mutableStateOf(false)
+    var viewportOrigin = androidx.compose.ui.geometry.Offset.Zero
     var query by mutableStateOf("")
     var settingsOpen by mutableStateOf(false)
     var cityDialog by mutableStateOf(false)
@@ -214,7 +218,7 @@ class LauncherState(
         mode = Mode.Library
         picker = pick
         if (pick) pickBefore = settings
-        if (search) searchFocusRequest++
+        if (search) searchFocusRequest++ else searchFocusRequest = 0
     }
 
     fun closeLibrary() {
@@ -243,6 +247,7 @@ class LauncherState(
         mode = Mode.Home
         selected = null
         holding = null
+        holdStart = null
         pop = null
         if (settings != s.start) showToast("桌面已更新", "撤销本次整理", undoTo = s.start, millis = 10_000)
         else gcWidgets()
@@ -271,6 +276,7 @@ class LauncherState(
         cityDialog = false
         widgetPicker = false
         licenses = false
+        primaryPicker = false
         settingsOpen = false
         when (mode) {
             Mode.Edit -> finishEdit()
@@ -283,13 +289,14 @@ class LauncherState(
     /** Android back and the B button. Returns false only when nothing was left to close. */
     fun back(): Boolean {
         when {
+            primaryPicker -> primaryPicker = false
             pop != null -> pop = null
             licenses -> licenses = false
             cityDialog -> cityDialog = false
             widgetPicker -> widgetPicker = false
             settingsOpen -> settingsOpen = false
             mode == Mode.Library -> closeLibrary()
-            mode == Mode.Edit && holding != null -> holding = null
+            mode == Mode.Edit && holding != null -> cancelHold()
             mode == Mode.Edit -> finishEdit()
             else -> { homeFocusRequest++; return false }
         }
@@ -309,10 +316,26 @@ class LauncherState(
         }
     }
 
+    val primaryEntry: AppEntry? get() = apps.firstOrNull { it.id == settings.primaryApp || it.pkg == settings.primaryApp }
+    val primaryTitle: String get() = primaryEntry?.label ?: if (settings.primaryApp == null) "选择主应用" else settings.primaryLabel
+    val usesTitoEmblem: Boolean get() = settings.primaryApp?.substringBefore('/') == TITODEX_PACKAGE
+
+    fun choosePrimary(app: AppEntry) {
+        commit(settings.copy(primaryApp = app.id, primaryLabel = app.label), "主应用已更换：${app.label}")
+        primaryPicker = false
+    }
+
+    fun openPrimaryPicker() { pop = null; primaryPicker = true }
+
     fun launchTitoDex() {
         pop = null
-        if (!device.launchPackage(TITODEX_PACKAGE)) showToast("尚未安装 TitoDex，请先安装正式版 TitoDex App")
-        else apps.firstOrNull { it.pkg == TITODEX_PACKAGE }?.let { quietly(settings.recordLaunch(it.id)) }
+        val app = primaryEntry
+        if (app != null) launch(app)
+        else if (settings.primaryApp == TITODEX_PACKAGE && device.launchPackage(TITODEX_PACKAGE)) return
+        else {
+            if (settings.primaryApp != null) showToast("${settings.primaryLabel} 暂不可用，请重新选择主应用")
+            primaryPicker = true
+        }
     }
 
     fun appInfo(pkg: String) {
@@ -371,7 +394,7 @@ class LauncherState(
 
     fun saveTrainer(name: String, motto: String) {
         pop = null
-        val n = name.trim().ifEmpty { "训练家" }.take(20)
+        val n = name.trim().ifEmpty { "玩家" }.take(20)
         val m = motto.trim().take(40)
         commit(settings.copy(name = n, motto = m), "名片已更新")
     }
@@ -387,7 +410,9 @@ class LauncherState(
 
     fun resizeSelected(option: SizeOption) {
         val id = selected ?: return
-        if (!commitLayout(Grid.resize(orient, layout(), id, option)) && layout().firstOrNull { it.id == id }?.size != option.key)
+        val resized = Grid.resize(orient, layout(), id, option)
+        val next = if (resized?.firstOrNull { it.id == id }?.hidden == true) Grid.show(orient, resized, id) ?: resized else resized
+        if (!commitLayout(next) && layout().firstOrNull { it.id == id }?.size != option.key)
             showToast("空间不够：先挪开或隐藏其他贴纸")
         resizeWidgetView(id)
     }
@@ -416,10 +441,10 @@ class LauncherState(
     fun cellDp(): Pair<Float, Float> {
         val g = Grid.spec(orient)
         val (w, h) = screenDp
-        return (w - Grid.PAD * 2) / g.cols to (h - Grid.TOP - Grid.BOTTOM) / g.rows
+        return (w - Grid.PAD * 2) / g.cols to (h - Grid.TOP - Grid.bottom(w)) / g.rows
     }
 
-    private fun spanFor(dp: Int, cell: Float) = kotlin.math.ceil((dp - 10f).coerceAtLeast(1f) / cell).toInt().coerceAtLeast(1)
+    private fun spanFor(dp: Int, cell: Float) = kotlin.math.ceil((dp + 10f).coerceAtLeast(1f) / cell).toInt().coerceAtLeast(1)
 
     fun moveSticker(id: String, c: Int, r: Int): Boolean {
         val st = layout().firstOrNull { it.id == id } ?: return false
@@ -431,7 +456,6 @@ class LauncherState(
     }
 
     fun hide(id: String) {
-        if (id == "tito") { showToast("TitoDex 是固定入口，不能隐藏"); return }
         val st = layout().firstOrNull { it.id == id } ?: return
         if (st.isWidget) {
             commit(settings.copy(layouts = settings.layouts.mapValues { (_, l) -> l.filter { it.id != id } }))
@@ -439,14 +463,14 @@ class LauncherState(
             showToast("已移除小组件，可在上方撤销")
             return
         }
-        commitLayout(layout().map { if (it.id == id) it.copy(hidden = true) else it })
+        commitLayout(layout().map { if (it.id == id) it.copy(hidden = true, pending = false) else it })
         selected = null
         showToast("已隐藏 ${Grid.LABEL[id]}，可在下方托盘找回")
     }
 
     fun show(id: String) {
         val next = Grid.show(orient, layout(), id)
-        if (next == null) { showToast("没有空位：先缩小或挪开其他贴纸"); return }
+        if (next == null) { selected = id; showToast("没有空位：在托盘调整尺寸，或换到更大的布局"); return }
         commitLayout(next)
         selected = id
     }
@@ -457,7 +481,7 @@ class LauncherState(
         for (w in widgets) {
             val z = Grid.sizeOf(w, orient)
             val spot = Grid.findFree(orient, list, w.id, Spot(w.c, w.r), z.w, z.h)
-            list = list + if (spot == null) w.copy(hidden = true) else w.copy(c = spot.c, r = spot.r, hidden = false)
+            list = list + if (spot == null) w.copy(hidden = true, pending = true) else w.copy(c = spot.c, r = spot.r, hidden = false, pending = false)
         }
         selected = null
         commitLayout(list)
@@ -470,7 +494,7 @@ class LauncherState(
     }
 
     fun stickerLabel(st: Sticker): String =
-        st.widgetId?.let { device.widgets?.info(it)?.label ?: "小组件" } ?: Grid.LABEL[st.id] ?: st.id
+        if (st.id == "tito") primaryTitle else st.widgetId?.let { device.widgets?.info(it)?.label ?: "小组件" } ?: Grid.LABEL[st.id] ?: st.id
 
     // ---------------------------------------------------------------- widgets
 
@@ -571,7 +595,7 @@ class LauncherState(
     fun resetAll() {
         val before = settings
         settingsOpen = false
-        settings = Settings(coachSeen = true, city = null)
+        settings = Settings.decode(null).copy(coachSeen = true)
         persist()
         weather = null
         showToast("已恢复全部默认", "撤销", undoTo = before)
@@ -582,7 +606,7 @@ class LauncherState(
     /** X / Y / Start / Select / L1 / R1. A and the D-pad go through Compose focus. */
     fun pad(btn: PadButton) {
         input = InputKind.Pad
-        if (pop != null || settingsOpen || cityDialog || widgetPicker || licenses) {
+        if (pop != null || settingsOpen || cityDialog || widgetPicker || licenses || primaryPicker) {
             if (btn == PadButton.B) back()
             return
         }
@@ -620,9 +644,18 @@ class LauncherState(
     }
 
     fun padActivateSticker(id: String) {
-        if (holding != null) { holding = null; return }
+        if (holding != null) { holding = null; holdStart = null; return }
+        holdStart = settings
+        holdUndoDepth = session?.stack?.size ?: 0
         holding = id
         selected = id
+    }
+
+    fun cancelHold() {
+        holdStart?.let { restore(it) }
+        session?.stack?.let { while (it.size > holdUndoDepth) it.removeLast() }
+        holding = null
+        holdStart = null
     }
 
     private fun optionsForFocus() {

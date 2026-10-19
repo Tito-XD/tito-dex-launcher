@@ -112,7 +112,7 @@ fun PopLayer(state: LauncherState, wDp: Float, hDp: Float) {
     val density = LocalDensity.current
     Box(Modifier.fillMaxSize().pointerInput(pop) { detectTapGestures { state.pop = null } })
     var size by remember(pop) { mutableStateOf(IntSize.Zero) }
-    val a = pop.anchor
+    val a = pop.anchor.translate(-state.viewportOrigin)
     val wPx = with(density) { wDp.dp.toPx() }
     val hPx = with(density) { hDp.dp.toPx() }
     val m = with(density) { 8.dp.toPx() }
@@ -121,9 +121,8 @@ fun PopLayer(state: LauncherState, wDp: Float, hDp: Float) {
     if (y + size.height > hPx - m) y = a.top - size.height - m * .75f
     x = x.coerceIn(m, (wPx - size.width - m).coerceAtLeast(m))
     y = y.coerceAtLeast(m)
-    val trainer = pop is Pop.Trainer
     Column(
-        Modifier.then(if (trainer) Modifier.imePadding() else Modifier)
+        Modifier
             .offset { IntOffset(x.roundToInt(), y.roundToInt()) }
             .motionReveal(pop)
             .onSizeChanged { size = it }
@@ -147,17 +146,22 @@ fun PopLayer(state: LauncherState, wDp: Float, hDp: Float) {
             }
             is Pop.Tito -> {
                 Row(Modifier.padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    TitoEmblem(30); Spacer(Modifier.width(8.dp)); Text("TitoDex", style = text(14.sp, FontWeight.ExtraBold, Navy))
+                    PrimaryBadge(state, 30); Spacer(Modifier.width(8.dp)); Text(state.primaryTitle, style = text(14.sp, FontWeight.ExtraBold, Navy))
                 }
-                MenuItem(state, "p:open", "▶ 打开 TitoDex") { state.launchTitoDex() }
-                MenuItem(state, "p:info", "ⓘ 应用信息") { state.appInfo(TITODEX_PACKAGE) }
+                MenuItem(state, "p:open", "▶ 打开 ${state.primaryTitle}") { state.launchTitoDex() }
+                state.primaryEntry?.let { entry -> MenuItem(state, "p:info", "ⓘ 应用信息") { state.appInfo(entry.pkg) } }
                 MenuItem(state, "p:edit", "✎ 整理桌面") { state.enterEdit() }
-                Note("固定入口，可移动、换尺寸，不能隐藏")
+                MenuItem(state, "p:replace", "⇄ 更换主应用") { state.openPrimaryPicker() }
+                MenuItem(state, "p:hide", "− 隐藏入口") { state.enterEdit(sel = "tito"); state.hide("tito") }
+                Note("位置与样式保留，应用可以自由更换")
             }
             is Pop.Trainer -> {
+                val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+                val focus = androidx.compose.ui.platform.LocalFocusManager.current
+                androidx.compose.runtime.DisposableEffect(Unit) { onDispose { focus.clearFocus(); keyboard?.hide() } }
                 var name by remember { mutableStateOf(state.settings.name) }
                 var motto by remember { mutableStateOf(state.settings.motto) }
-                Text("Trainer Card", style = text(14.sp, FontWeight.ExtraBold, Navy), modifier = Modifier.padding(6.dp))
+                Text("个人名片", style = text(14.sp, FontWeight.ExtraBold, Navy), modifier = Modifier.padding(6.dp))
                 Text("称呼", style = text(11.sp, FontWeight.ExtraBold, Navy.copy(alpha = .6f)), modifier = Modifier.padding(horizontal = 2.dp))
                 Field(name, { name = it }, 20, Modifier.padding(top = 3.dp, bottom = 7.dp))
                 Text("一句话签名（完整尺寸显示）", style = text(11.sp, FontWeight.ExtraBold, Navy.copy(alpha = .6f)), modifier = Modifier.padding(horizontal = 2.dp))
@@ -263,40 +267,6 @@ fun CoachLayer(state: LauncherState) {
 }
 
 @Composable
-fun HintsLayer(state: LauncherState) {
-    val h = state.settings.hints
-    if (!(h == Hints.always || (h == Hints.auto && state.input == InputKind.Pad)) || state.settingsOpen) return
-    @Composable
-    fun b(key: String, label: String, btn: PadButton?) {
-        Row(
-            Modifier.height(26.dp).pointerInput(btn) { detectTapGestures { if (btn != null) state.pad(btn) } }.padding(horizontal = 6.dp),
-            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Box(Modifier.heightIn(min = 18.dp).widthIn(min = 18.dp).background(Cream, RoundedCornerShape(9.dp)).padding(horizontal = 4.dp), contentAlignment = Alignment.Center) {
-                Text(key, style = text(10.sp, FontWeight.ExtraBold, NavyDeep))
-            }
-            Text(label, style = text(11.5.sp, FontWeight.ExtraBold, Cream))
-        }
-    }
-    Box(Modifier.fillMaxSize()) {
-        val bar = Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(30.dp)
-        when (state.mode) {
-            Mode.Edit -> Row(bar.background(Color(0xb808101c)), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                if (state.holding != null) { b("A", "放下", null); b("B", "取消", PadButton.B); Text("方向键 移动", style = text(11.5.sp, FontWeight.ExtraBold, Cream)) }
-                else { b("A", "拿起", null); b("X", "尺寸", PadButton.X); b("Y", "隐藏", PadButton.Y); b("L/R", "切换", PadButton.R1); b("⊟", "撤销", PadButton.Select); b("B", "完成", PadButton.B) }
-            }
-            Mode.Library -> Row(bar.background(Color(0xb808101c)), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                b("A", "打开", null); b("X", "选项", PadButton.X); b("Y", "搜索", PadButton.Y); b("L/R", "跳字母", PadButton.R1); b("B", "返回", PadButton.B)
-            }
-            Mode.Home -> Row(bar.padding(horizontal = 6.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Row(Modifier.background(Color(0x9e08101c), RoundedCornerShape(8.dp))) { b("A", "打开", null); b("X", "选项", PadButton.X) }
-                Row(Modifier.background(Color(0x9e08101c), RoundedCornerShape(8.dp))) { b("Y", "搜索", PadButton.Y); b("☰", "整理", PadButton.Start); b("⊟", "设置", PadButton.Select) }
-            }
-        }
-    }
-}
-
-@Composable
 fun DragLayer(state: LauncherState) {
     val d = state.iconDrag ?: return
     val density = LocalDensity.current
@@ -307,7 +277,7 @@ fun DragLayer(state: LauncherState) {
         ) { Text("拖到这里：移出常玩", style = text(13.sp, FontWeight.ExtraBold, Color.White)) }
         val half = with(density) { 25.dp.toPx() }
         Box(
-            Modifier.offset { IntOffset((d.pos.x - half).roundToInt(), (d.pos.y - half).roundToInt()) }
+            Modifier.offset { IntOffset((d.pos.x - state.viewportOrigin.x - half).roundToInt(), (d.pos.y - state.viewportOrigin.y - half).roundToInt()) }
                 .graphicsLayer { scaleX = 1.12f; scaleY = 1.12f; shadowElevation = 10.dp.toPx(); shape = RoundedCornerShape(14.dp); clip = false },
         ) { AppIcon(state.device.icon(d.app), d.app.label) }
     }
@@ -372,7 +342,7 @@ fun SettingsScreen(state: LauncherState) {
                 SRow(state, "s:home", if (state.status.defaultHome) "已是默认桌面" else "设为默认桌面", "系统选择器") { state.system(SystemEntry.requestHome) }
                 SRow(state, "s:homes", "切换其他桌面", "") { state.system(SystemEntry.homeSettings) }
             }
-            Group("训练家") {
+            Group("个人名片") {
                 SRow(state, "s:name", "称呼", s.name) { state.pop = Pop.Trainer(state.rects["s:name"] ?: androidx.compose.ui.geometry.Rect.Zero) }
                 SRow(state, "s:motto", "一句话签名", s.motto.ifEmpty { "未填写" }) { state.pop = Pop.Trainer(state.rects["s:motto"] ?: androidx.compose.ui.geometry.Rect.Zero) }
             }
@@ -418,7 +388,7 @@ fun SettingsScreen(state: LauncherState) {
             Group("关于") {
                 SRow(state, "s:ver", "TitoDex Launcher", "${BuildConfig.VERSION_NAME} · 掌机预览版")
                 Text(
-                    "轻量桌面，连接你的应用与 TitoDex。称呼、常玩与外观只保存在这台掌机上。\n非官方个人项目，与 Nintendo、GAME FREAK、The Pokémon Company 无隶属或赞助关系。",
+                    "轻量掌机桌面，连接你的常用应用。称呼、常玩与外观只保存在这台掌机上。\n非官方个人项目，与 Nintendo、GAME FREAK、The Pokémon Company 无隶属或赞助关系。",
                     style = text(11.sp, FontWeight.Bold, look.sheetInk.copy(alpha = .6f)).copy(lineHeight = 17.sp),
                 )
                 SRow(state, "s:lic", "开源许可与来源", "") { state.licenses = true }

@@ -6,7 +6,7 @@ import java.util.Calendar
 
 const val TITODEX_PACKAGE = "com.tito.titodex"
 const val MAX_PINNED = 12
-const val SCHEMA = 3
+const val SCHEMA = 4
 
 enum class LauncherTheme(val label: String, val blurb: String) {
     journal("训练家手帐", "纸贴纸 · 胶带 · 印章"),
@@ -20,7 +20,11 @@ enum class Effect(val label: String) { clear("原图"), frost("柔焦"), dim("�
 
 enum class Hints(val label: String) { auto("使用手柄时"), always("总是"), off("关闭") }
 
-enum class Orient { square, land }
+/** Stable layout profiles; square/land keys retain existing users' arrangements. */
+enum class Orient(val cols: Int, val rows: Int, val landscape: Boolean = false) {
+    square(4, 4), land(6, 3, true), wide(8, 4, true), portrait(4, 6), tall(4, 7), portraitWide(5, 7);
+    val legacy: Orient get() = if (landscape) land else square
+}
 
 enum class Template(val label: String) { roam("漫游"), panel("面板"), quiet("留白") }
 
@@ -40,11 +44,11 @@ data class City(val name: String, val lat: Double, val lon: Double) {
 }
 
 /** A sticker on the home grid. Built-in ids: clock, trainer, tito, shelf. Widgets use `widget:<appWidgetId>`. */
-data class Sticker(val id: String, val c: Int, val r: Int, val size: String, val hidden: Boolean = false) {
+data class Sticker(val id: String, val c: Int, val r: Int, val size: String, val hidden: Boolean = false, val pending: Boolean = false) {
     val widgetId: Int? get() = if (id.startsWith(WIDGET_PREFIX)) id.removePrefix(WIDGET_PREFIX).toIntOrNull() else null
     val isWidget: Boolean get() = widgetId != null
 
-    fun toJson(): JSONObject = JSONObject().put("id", id).put("c", c).put("r", r).put("size", size).put("hidden", hidden)
+    fun toJson(): JSONObject = JSONObject().put("id", id).put("c", c).put("r", r).put("size", size).put("hidden", hidden).put("pending", pending)
 
     companion object {
         const val WIDGET_PREFIX = "widget:"
@@ -72,6 +76,8 @@ data class Settings(
     val hints: Hints = Hints.auto,
     val libraryColumns: Int = 5,
     val coachSeen: Boolean = false,
+    val primaryApp: String? = TITODEX_PACKAGE,
+    val primaryLabel: String = "TitoDex",
 ) {
     fun layout(o: Orient): List<Sticker> = layouts[o] ?: Grid.template(o, Template.roam)
 
@@ -122,6 +128,8 @@ data class Settings(
             .put("hints", hints.name)
             .put("libraryColumns", libraryColumns)
             .put("coachSeen", coachSeen)
+            .put("primaryApp", primaryApp ?: JSONObject.NULL)
+            .put("primaryLabel", primaryLabel)
         val layoutsJson = JSONObject()
         for ((o, list) in layouts) layoutsJson.put(o.name, JSONArray().apply { list.forEach { put(it.toJson()) } })
         json.put("layouts", layoutsJson)
@@ -129,9 +137,9 @@ data class Settings(
     }
 
     companion object {
-        /** Reads schema 3 and migrates schema 1/2 (0.1.0, 0.2.0) preferences. A corrupt value never blocks home. */
+        /** Reads schema 4 and migrates schema 1/2/3 preferences. A corrupt value never blocks home. */
         fun decode(raw: String?): Settings {
-            val base = Settings()
+            val base = if (raw == null) Settings(name = "玩家", motto = "今天，玩点什么？", primaryApp = null, primaryLabel = "主应用") else Settings()
             val json = try { JSONObject(raw ?: return base) } catch (_: Exception) { return base }
             return try { read(json, base) } catch (_: Exception) { base }
         }
@@ -172,17 +180,21 @@ data class Settings(
                 motion = json.opt("motion") != false,
                 hints = enumOf(json.opt("hints"), Hints.auto),
                 coachSeen = json.opt("coachSeen") == true,
+                primaryApp = if (json.has("primaryApp")) json.opt("primaryApp") as? String else TITODEX_PACKAGE,
+                primaryLabel = (json.opt("primaryLabel") as? String)?.take(80) ?: "TitoDex",
             )
             (json.opt("reveal") as? Number)?.toDouble()?.takeIf { it.isFinite() }?.let { s = s.copy(reveal = it.toFloat().coerceIn(0f, 1f)) }
             val layouts = json.optJSONObject("layouts")
             val map = Orient.entries.associateWith { o ->
-                val arr = layouts?.optJSONArray(o.name) ?: return@associateWith Grid.template(o, Template.roam)
+                val arr = layouts?.optJSONArray(o.name) ?: layouts?.optJSONArray(o.legacy.name)
+                    ?: return@associateWith Grid.template(o, Template.roam)
+                val inherited = layouts?.optJSONArray(o.name) == null
                 val parsed = (0 until arr.length()).mapNotNull { i ->
                     val row = arr.optJSONObject(i) ?: return@mapNotNull null
                     val id = row.opt("id") as? String ?: return@mapNotNull null
-                    Sticker(id, row.optInt("c"), row.optInt("r"), row.optString("size"), row.optBoolean("hidden"))
+                    Sticker(id, row.optInt("c"), row.optInt("r"), row.optString("size"), row.optBoolean("hidden"), row.optBoolean("pending"))
                 }
-                Grid.sanitize(o, parsed)
+                if (inherited) Grid.reflow(o.legacy, o, Grid.sanitize(o.legacy, parsed)) else Grid.sanitize(o, parsed)
             }
             return s.copy(layouts = map)
         }

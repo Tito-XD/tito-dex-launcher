@@ -85,7 +85,7 @@ private enum class Outcome { Up, Move, Long, Cancel }
 @Composable
 fun Stage(
     state: LauncherState, s: Settings, o: Orient, wDp: Float, hDp: Float, live: Boolean, editLayout: Boolean,
-    photo: ImageBitmap?, now: Calendar, modifier: Modifier = Modifier,
+    photo: ImageBitmap?, now: Calendar, modifier: Modifier = Modifier, paintWallpaper: Boolean = true,
 ) {
     val look = lookOf(s)
     val density = LocalDensity.current
@@ -93,7 +93,7 @@ fun Stage(
     val scope = rememberCoroutineScope()
     val g = Grid.spec(o)
     val cw = (wDp - Grid.PAD * 2) / g.cols
-    val ch = (hDp - Grid.TOP - Grid.BOTTOM) / g.rows
+    val ch = (hDp - Grid.TOP - Grid.bottom(wDp)) / g.rows
     val layout = s.layout(o)
     var drag by remember { mutableStateOf<StickerDrag?>(null) }
     var coords by remember { mutableStateOf<LayoutCoordinates?>(null) }
@@ -178,7 +178,7 @@ fun Stage(
         awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false)
             shelfFling?.cancel()
-            if (state.pop != null || state.settingsOpen) return@awaitEachGesture
+            if (state.pop != null || state.settingsOpen || state.primaryPicker) return@awaitEachGesture
             when (state.mode) {
                 Mode.Library -> return@awaitEachGesture
                 Mode.Edit -> {
@@ -188,7 +188,7 @@ fun Stage(
                         return@awaitEachGesture
                     }
                     val p = down.position / density.density
-                    val badge = state.layout().filter { !it.hidden && it.id != "tito" }.lastOrNull {
+                    val badge = state.layout().filter { !it.hidden }.lastOrNull {
                         val r = stickerRect(it)
                         Rect(r.left - 12, r.top - 12, r.left + 34, r.top + 34).contains(p)
                     }
@@ -260,7 +260,7 @@ fun Stage(
                                         if (!dragging && (c.position - down.position).getDistance() > slop) { dragging = true; state.pop = null }
                                         if (dragging) {
                                             val rp = rootOf(c.position)
-                                            val over = rp.y < 46 * density.density
+                                            val over = rp.y - state.viewportOrigin.y < 46 * density.density
                                             state.iconDrag = IconDrag(app, rp, true, if (over) null else state.shelfInsertAt(rp, density.density), over)
                                         }
                                     }
@@ -293,8 +293,7 @@ fun Stage(
         Box(
             modifier.size(wDp.dp, hDp.dp).clipToBounds().onGloballyPositioned { if (live) coords = it }.then(gestures),
         ) {
-            Wallpaper(s.theme, s.wallpaper, s.effect, photo, Modifier.fillMaxSize())
-            StatusBar(state, look.bgInk)
+            if (paintWallpaper) Wallpaper(s.theme, s.wallpaper, s.effect, photo, Modifier.fillMaxSize())
             if (editLayout) {
                 for (r in 0 until g.rows) for (c in 0 until g.cols) {
                     Box(
@@ -346,8 +345,7 @@ fun Stage(
                         })
                     }
                     if (editLayout) {
-                        if (st.id == "tito") Text("固定", style = text(10.sp, FontWeight.ExtraBold, Cream), modifier = Modifier.offset((-3).dp, (-5).dp).background(Navy, RoundedCornerShape(9.dp)).padding(horizontal = 7.dp, vertical = 2.dp))
-                        else Box(Modifier.offset((-8).dp, (-8).dp).size(28.dp).background(Danger, CircleShape).border(2.5.dp, Color.White, CircleShape), contentAlignment = Alignment.Center) {
+                        Box(Modifier.offset((-8).dp, (-8).dp).size(28.dp).background(Danger, CircleShape).border(2.5.dp, Color.White, CircleShape), contentAlignment = Alignment.Center) {
                             Text("−", style = text(18.sp, FontWeight.ExtraBold, Color.White))
                         }
                     }
@@ -365,63 +363,6 @@ fun Stage(
                     )
                 }
             }
-            if (!editLayout) Handle(state, live, Modifier.align(Alignment.BottomCenter))
-        }
-    }
-}
-
-@Composable
-private fun StatusBar(state: LauncherState, ink: Color) {
-    val st = state.status
-    Row(
-        Modifier.fillMaxWidth().height(24.dp).padding(horizontal = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(7.dp, Alignment.End),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Canvas(Modifier.size(13.dp)) {
-            val w = size.width
-            val stroke = Stroke(w * .2f, cap = StrokeCap.Round)
-            val a = if (st.online) 1f else .35f
-            for ((i, rr) in listOf(.95f, .65f, .35f).withIndex()) {
-                drawArc(ink.copy(alpha = a), 225f, 90f, false, Offset(w / 2 - w * rr / 1.1f, w * .85f - w * rr / 1.1f), Size(w * rr * 2 / 1.1f, w * rr * 2 / 1.1f), style = stroke)
-                if (i == 2) drawCircle(ink.copy(alpha = a), w * .1f, Offset(w / 2, w * .85f))
-            }
-        }
-        if (st.battery >= 0) {
-            Text("${if (st.charging) "充电 · " else ""}${st.battery}%", style = text(11.sp, FontWeight.ExtraBold, ink))
-            Canvas(Modifier.size(22.dp, 10.dp)) {
-                val bw = size.width - 3.dp.toPx()
-                drawRoundRect(ink, Offset.Zero, Size(bw, size.height), CornerRadius(3.dp.toPx()), style = Stroke(1.5.dp.toPx()))
-                val inset = 2.5.dp.toPx()
-                drawRoundRect(ink, Offset(inset, inset), Size((bw - inset * 2) * st.battery / 100f, size.height - inset * 2), CornerRadius(1.dp.toPx()))
-                drawRoundRect(ink, Offset(bw + 1.dp.toPx(), size.height * .3f), Size(2.dp.toPx(), size.height * .4f), CornerRadius(1.dp.toPx()))
-            }
-        }
-    }
-}
-
-@Composable
-private fun Handle(state: LauncherState, live: Boolean, modifier: Modifier) {
-    val look = LocalLook.current
-    val shape = if (look.journal) RoundedCornerShape(11.dp, 11.dp, 0.dp, 0.dp) else RoundedCornerShape(15.dp)
-    val (bg, fg) = when {
-        look.journal -> Paper.copy(alpha = .94f) to JournalInk
-        look.plastic -> Color.White.copy(alpha = .42f) to look.bgInk
-        else -> Navy to Cream
-    }
-    Box(modifier.width(140.dp).height(30.dp).then(if (live) Modifier.padTarget(state, "handle", "应用库", 14f) { state.openLibrary() } else Modifier), contentAlignment = Alignment.BottomCenter) {
-        Row(
-            Modifier.padding(bottom = if (look.journal) 0.dp else 5.dp).background(bg, shape)
-                .then(if (look.journal) Modifier.border(1.25.dp, JournalLine, shape) else if (look.plastic) Modifier.border(1.dp, Color.White.copy(alpha = .7f), shape) else Modifier)
-                .padding(horizontal = 16.dp, vertical = 5.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Canvas(Modifier.size(10.dp, 6.dp)) {
-                drawLine(fg, Offset(0f, size.height), Offset(size.width / 2, 0f), 2.dp.toPx(), StrokeCap.Round)
-                drawLine(fg, Offset(size.width / 2, 0f), Offset(size.width, size.height), 2.dp.toPx(), StrokeCap.Round)
-            }
-            Spacer(Modifier.width(5.dp))
-            Text("应用库", style = text(12.sp, FontWeight.ExtraBold, fg))
         }
     }
 }

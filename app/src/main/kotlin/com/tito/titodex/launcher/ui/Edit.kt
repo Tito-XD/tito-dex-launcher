@@ -4,6 +4,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -61,17 +63,22 @@ data class StageFrame(val scale: Float, val x: Float, val y: Float)
 
 fun stageFrame(editing: Boolean, tab: EditTab, o: Orient, w: Float, h: Float): StageFrame {
     if (!editing) return StageFrame(1f, 0f, 0f)
-    return when {
-        tab == EditTab.layout -> { val s = (h - 46 - 56) / h; StageFrame(s, (w - w * s) / 2, 46f) }
-        o == Orient.square -> { val s = (h - 46 - 216) / h; StageFrame(s, (w - w * s) / 2, 46f) }
-        else -> { val s = minOf((w - 300 - 24) / w, (h - 46 - 12) / h); StageFrame(s, 12f, 46 + ((h - 46 - 12) - h * s) / 2) }
+    val availableH = (h - Grid.bottom(w) - 54).coerceAtLeast(1f)
+    return if (o.landscape) {
+        val side = if (tab == EditTab.layout) 232f else 280f
+        val scale = minOf((w - side - 28).coerceAtLeast(1f) / w, availableH / h)
+        StageFrame(scale, 12f, 46 + (availableH - h * scale) / 2)
+    } else {
+        val tray = if (tab == EditTab.layout) 100f else 216f
+        val scale = (availableH - tray).coerceAtLeast(1f) / h
+        StageFrame(scale, (w - w * scale) / 2, 46f)
     }
 }
 
 @Composable
 fun EditChrome(state: LauncherState, wDp: Float, hDp: Float, photo: ImageBitmap?, now: Calendar) {
     val look = LocalLook.current
-    val trayInk = when (look.theme) { LauncherTheme.journal -> JournalInk; LauncherTheme.plastic -> Color(0xffdfe9f2); LauncherTheme.flat -> FlatInk }
+    val trayInk = Cream
     Box(Modifier.fillMaxSize()) {
         Row(
             Modifier.padding(horizontal = 8.dp).padding(top = 6.dp).fillMaxWidth().height(34.dp).motionReveal("edit toolbar"),
@@ -97,9 +104,15 @@ fun EditChrome(state: LauncherState, wDp: Float, hDp: Float, photo: ImageBitmap?
             Chip(state, "e:done", "完成", primary = true) { state.finishEdit() }
         }
         when (state.tab) {
-            EditTab.layout -> Tray(state, trayInk, Modifier.align(Alignment.BottomStart).padding(bottom = 6.dp).motionReveal(state.tab, order = 1))
+            EditTab.layout -> {
+                val land = state.orient.landscape
+                Tray(state, trayInk,
+                    (if (land) Modifier.align(Alignment.TopEnd).padding(top = 46.dp).width(232.dp).fillMaxHeight()
+                    else Modifier.align(Alignment.BottomStart).fillMaxWidth().height(100.dp))
+                        .motionReveal(state.tab, order = 1))
+            }
             else -> {
-                val land = state.orient == Orient.land
+                val land = state.orient.landscape
                 val shape = if (land) RoundedCornerShape(topStart = 20.dp) else RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
                 val bg = when (look.theme) {
                     LauncherTheme.journal -> Paper.copy(alpha = .97f)
@@ -107,7 +120,7 @@ fun EditChrome(state: LauncherState, wDp: Float, hDp: Float, photo: ImageBitmap?
                     LauncherTheme.flat -> FlatPaper
                 }
                 Column(
-                    (if (land) Modifier.align(Alignment.TopEnd).padding(top = 46.dp).width(300.dp).fillMaxHeight()
+                    (if (land) Modifier.align(Alignment.TopEnd).padding(top = 46.dp).width(280.dp).fillMaxHeight()
                     else Modifier.align(Alignment.BottomStart).fillMaxWidth().height(212.dp))
                         .motionReveal(state.tab, order = 1).clip(shape).background(bg, shape)
                         .pointerInput(Unit) { detectTapGestures { } }
@@ -124,14 +137,17 @@ fun EditChrome(state: LauncherState, wDp: Float, hDp: Float, photo: ImageBitmap?
 @Composable
 private fun Sep() = Box(Modifier.width(1.dp).height(20.dp).background(Color(0x737f8ca0)))
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun Tray(state: LauncherState, ink: Color, modifier: Modifier) {
     val sel = state.selected?.let { id -> state.layout().firstOrNull { it.id == id } }
-    Row(
-        modifier.fillMaxWidth().height(46.dp).horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp),
-        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
+    FlowRow(
+        modifier.background(NavyDeep.copy(alpha = .12f), RoundedCornerShape(14.dp))
+            .verticalScroll(rememberScrollState()).padding(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         if (sel != null) {
+            if (sel.hidden) Chip(state, "e:restore", "放回桌面") { state.show(sel.id) }
             for (z in state.sizeOptions(sel.id)) {
                 Chip(state, "e:size:${z.key}", z.label, on = sel.size == z.key, small = if (sel.isWidget) null else "${z.w}×${z.h}") { state.resizeSelected(z) }
             }
@@ -147,13 +163,14 @@ private fun Tray(state: LauncherState, ink: Color, modifier: Modifier) {
                     Chip(state, "e:24h", "24 小时制", on = state.settings.use24Hour) { state.update { it.copy(use24Hour = !it.use24Hour) } }
                 }
                 "trainer" -> Chip(state, "e:name", "编辑称呼") { state.pop = Pop.Trainer(state.rects["st:trainer"] ?: androidx.compose.ui.geometry.Rect.Zero) }
-                "tito" -> Text("固定入口", style = text(11.sp, FontWeight.ExtraBold, ink.copy(alpha = .7f)))
+                "tito" -> Chip(state, "e:primary", "更换主应用") { state.openPrimaryPicker() }
                 else -> Chip(state, "e:remove", "移除小组件", warn = true) { state.hide(sel.id) }
             }
+            if (!sel.isWidget) Chip(state, "e:hide", "隐藏", warn = true) { state.hide(sel.id) }
         } else {
             val hidden = state.layout().filter { it.hidden }
             if (hidden.isNotEmpty()) {
-                for (h in hidden) Chip(state, "e:show:${h.id}", "＋ ${state.stickerLabel(h)}", dashed = true) { state.show(h.id) }
+                for (h in hidden) Chip(state, "e:show:${h.id}", "${if (h.pending) "待放置" else "＋"} ${state.stickerLabel(h)}", dashed = true) { state.show(h.id) }
                 Sep()
             } else if ((state.session?.stack?.size ?: 0) == 0) {
                 Text("拖动或轻点贴纸", style = text(11.sp, FontWeight.ExtraBold, ink))
@@ -176,7 +193,7 @@ private fun Ph(t: String, gap: Boolean = false) {
 @Composable
 private fun LookPanel(state: LauncherState, wDp: Float, hDp: Float, photo: ImageBitmap?, now: Calendar) {
     val s = state.settings
-    Ph("主题 · 轻点即在上方预览")
+    Ph("主题 · 轻点预览")
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         for (t in LauncherTheme.entries) {
             val on = s.theme == t

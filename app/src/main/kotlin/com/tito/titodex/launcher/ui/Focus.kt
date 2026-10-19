@@ -79,6 +79,7 @@ fun Modifier.padTarget(state: LauncherState, key: String, label: String? = null,
     val look = LocalLook.current
     val motion = LocalLauncherMotion.current
     val active = LocalMotionControls.current && when {
+        state.primaryPicker -> key.startsWith("primary:")
         key.startsWith("lib") || key.startsWith("l:") -> state.mode == Mode.Library
         key.startsWith("st:") || key.startsWith("e:") -> state.mode == Mode.Edit
         key in setOf("tito", "trainer", "wx", "handle") || key.startsWith("shelf:") -> state.mode == Mode.Home && state.pop == null && !state.settingsOpen

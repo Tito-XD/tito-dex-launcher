@@ -64,6 +64,7 @@ class LauncherMotionTest {
     }
 
     private fun frame() {
+        rule.runOnIdle { Snapshot.sendApplyNotifications() }
         rule.mainClock.advanceTimeByFrame()
         rule.waitForIdle()
     }
@@ -225,7 +226,7 @@ class LauncherMotionTest {
         val (_, state) = launch()
         rule.mainClock.autoAdvance = false
         rule.onRoot().performTouchInput {
-            down(Offset(width * .5f, height * .95f))
+            down(Offset(width * .5f, height * .72f))
             moveBy(Offset(0f, -100f))
         }
         frame()
@@ -252,7 +253,7 @@ class LauncherMotionTest {
         frame()
         assertFalse(id in state.settings.widgetIds())
         assertEquals(listOf(id), device.widgets.deleted)
-        rule.onNodeWithContentDescription("Trainer Card").performClick()
+        rule.onNodeWithContentDescription("个人名片").performClick()
         frame()
         rule.onNodeWithContentDescription("✓ 完成").performClick()
         frame()

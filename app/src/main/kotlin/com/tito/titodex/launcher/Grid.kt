@@ -11,16 +11,25 @@ data class Placement(val ok: Boolean, val swap: Sticker? = null)
 /** Snap grid for both screen shapes. Stickers come in a few sizes, each with its own form. */
 object Grid {
     const val PAD = 12f
-    const val TOP = 24f
-    const val BOTTOM = 30f
+    const val TOP = 8f
+    const val BOTTOM = 48f
+    fun bottom(widthDp: Float) = if (widthDp < 460f) 76f else BOTTOM
 
     val BUILT_IN = listOf("clock", "trainer", "tito", "shelf")
 
-    val LABEL = mapOf("clock" to "时间天气", "trainer" to "Trainer Card", "tito" to "TitoDex", "shelf" to "常玩")
+    val LABEL = mapOf("clock" to "时间天气", "trainer" to "个人名片", "tito" to "主应用", "shelf" to "常玩")
 
-    fun spec(o: Orient) = if (o == Orient.square) GridSpec(4, 4) else GridSpec(6, 3)
+    fun spec(o: Orient) = GridSpec(o.cols, o.rows)
 
-    fun orientFor(widthDp: Float, heightDp: Float) = if (widthDp > heightDp * 1.25f) Orient.land else Orient.square
+    fun orientFor(widthDp: Float, heightDp: Float): Orient = when {
+        widthDp > heightDp * 1.25f -> if (widthDp >= 740 && heightDp >= 360) Orient.wide else Orient.land
+        heightDp > widthDp * 1.35f -> when {
+            widthDp >= 460 && heightDp >= 680 -> Orient.portraitWide
+            heightDp >= 720 -> Orient.tall
+            else -> Orient.portrait
+        }
+        else -> Orient.square
+    }
 
     private val SIZES: Map<Orient, Map<String, List<SizeOption>>> = mapOf(
         Orient.square to mapOf(
@@ -50,17 +59,42 @@ object Grid {
         ),
     )
 
-    fun template(o: Orient, t: Template): List<Sticker> = TEMPLATES.getValue(o).getValue(t)
+    fun template(o: Orient, t: Template): List<Sticker> {
+        val base = TEMPLATES.getValue(o.legacy).getValue(t)
+        return if (o == o.legacy) base else reflow(o.legacy, o, base)
+    }
+
+    /** Derive an additional profile once. Retain ids, hidden state and widget spans. */
+    fun reflow(from: Orient, to: Orient, input: List<Sticker>): List<Sticker> {
+        val placed = mutableListOf<Sticker>()
+        for (st in input) {
+            val old = sizeOf(st, from)
+            val z = sizeOf(st, to)
+            fun anchor(pos: Int, oldMax: Int, newMax: Int): Int =
+                if (oldMax <= 0) 0 else (pos.toFloat() / oldMax * newMax).toInt().coerceAtLeast(0)
+            val near = Spot(anchor(st.c, from.cols - old.w, to.cols - z.w), anchor(st.r, from.rows - old.h, to.rows - z.h))
+            if (st.hidden && !st.pending) { placed.add(st); continue }
+            val spot = findFree(to, placed, st.id, near, z.w, z.h)
+            placed.add(if (spot == null) st.copy(hidden = true, pending = true)
+                else st.copy(c = spot.c, r = spot.r, hidden = false, pending = false))
+        }
+        return placed
+    }
 
     /** Built-ins use named sizes; widgets store their span directly as "WxH". */
-    fun options(o: Orient, id: String): List<SizeOption> = SIZES.getValue(o)[id] ?: emptyList()
+    fun options(o: Orient, id: String): List<SizeOption> = SIZES.getValue(o.legacy)[id]?.map { z ->
+        if (o == o.legacy) z else when {
+            id == "shelf" -> z.copy(w = when (z.key) { "a" -> o.cols - if (o.landscape) 2 else 1; "b" -> o.cols - if (o.landscape) 1 else 0; else -> o.cols })
+            id == "clock" && z.key == "w" -> z.copy(w = if (o.landscape) o.cols / 2 else o.cols)
+            else -> z
+        }
+    } ?: emptyList()
 
     fun sizeOf(st: Sticker, o: Orient): SizeOption {
         if (st.isWidget) {
             val parts = st.size.split('x').mapNotNull { it.toIntOrNull() }
-            val g = spec(o)
-            val w = parts.getOrNull(0)?.coerceIn(1, g.cols) ?: 2
-            val h = parts.getOrNull(1)?.coerceIn(1, g.rows) ?: 1
+            val w = parts.getOrNull(0)?.coerceIn(1, 20) ?: 2
+            val h = parts.getOrNull(1)?.coerceIn(1, 20) ?: 1
             return SizeOption(st.size, w, h, "${w}×$h")
         }
         val list = options(o, st.id)
@@ -72,9 +106,8 @@ object Grid {
         val g = spec(o)
         val spans = if (o == Orient.square) listOf(1 to 1, 2 to 1, 2 to 2, 3 to 1, 3 to 2, 4 to 1, 4 to 2, 4 to 3)
         else listOf(1 to 1, 2 to 1, 2 to 2, 3 to 1, 3 to 2, 4 to 1, 4 to 2, 6 to 2)
-        val fit = spans.filter { (w, h) -> w >= minW && h >= minH && w <= g.cols && h <= g.rows }
-        val list = fit.ifEmpty { listOf(minW.coerceIn(1, g.cols) to minH.coerceIn(1, g.rows)) }
-        return list.map { (w, h) -> SizeOption("${w}x$h", w, h, "${w}×$h") }
+        val fit = (spans + listOf(minW to minH, g.cols to 1, g.cols to 2, 2 to 3, 4 to 3, 4 to 4)).distinct().filter { (w, h) -> w >= minW && h >= minH && w <= g.cols && h <= g.rows }
+        return fit.map { (w, h) -> SizeOption("${w}x$h", w, h, "${w}×$h") }
     }
 
     fun inBounds(o: Orient, c: Int, r: Int, w: Int, h: Int): Boolean {
@@ -148,24 +181,23 @@ object Grid {
         val sizes = if (st.isWidget) listOf(sizeOf(st, o)) else options(o, id).sortedBy { if (it.key == st.size) 0 else 1 }
         for (z in sizes) {
             val spot = findFree(o, layout, id, Spot(st.c, st.r), z.w, z.h) ?: continue
-            return layout.map { if (it.id == id) it.copy(hidden = false, size = z.key, c = spot.c, r = spot.r) else it }
+            return layout.map { if (it.id == id) it.copy(hidden = false, pending = false, size = z.key, c = spot.c, r = spot.r) else it }
         }
         return null
     }
 
     /** Places a new widget, falling back to a hidden entry the user can bring back after making room. */
     fun addWidget(o: Orient, layout: List<Sticker>, appWidgetId: Int, w: Int, h: Int): List<Sticker> {
-        val g = spec(o)
-        val ww = w.coerceIn(1, g.cols)
-        val hh = h.coerceIn(1, g.rows)
+        val ww = w.coerceAtLeast(1)
+        val hh = h.coerceAtLeast(1)
         val spot = findFree(o, layout, "", Spot(0, 0), ww, hh)
-        val st = Sticker.widget(appWidgetId, spot?.c ?: 0, spot?.r ?: 0, ww, hh).copy(hidden = spot == null)
+        val st = Sticker.widget(appWidgetId, spot?.c ?: 0, spot?.r ?: 0, ww, hh).copy(hidden = spot == null, pending = spot == null)
         return layout + st
     }
 
     /**
      * Repairs persisted layouts: drops unknown or duplicate ids, adds missing built-ins from the default template,
-     * keeps TitoDex visible, and hides anything that no longer fits.
+     * preserves intentional hiding and marks anything that no longer fits as pending.
      */
     fun sanitize(o: Orient, input: List<Sticker>): List<Sticker> {
         val seen = mutableSetOf<String>()
@@ -174,7 +206,7 @@ object Grid {
             (st.id in BUILT_IN || st.isWidget) && seen.add(st.id)
         }.map { st ->
             val fixedSize = if (st.isWidget) st else st.copy(size = sizeOf(st, o).key)
-            if (st.id == "tito") fixedSize.copy(hidden = false) else fixedSize
+            fixedSize
         }.toMutableList()
         for (d in defaults) if (kept.none { it.id == d.id }) kept.add(d.copy(hidden = d.id != "tito"))
         val placed = mutableListOf<Sticker>()
@@ -185,7 +217,7 @@ object Grid {
             if (ok) placed.add(st)
             else {
                 val spot = findFree(o, placed, st.id, Spot(st.c, st.r), z.w, z.h)
-                placed.add(if (spot != null) st.copy(c = spot.c, r = spot.r) else st.copy(hidden = st.id != "tito"))
+                placed.add(if (spot != null) st.copy(c = spot.c, r = spot.r) else st.copy(hidden = true, pending = true))
             }
         }
         return kept.map { k -> placed.first { it.id == k.id } }

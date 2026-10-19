@@ -161,7 +161,7 @@ class LauncherUiTest {
 
     @Test fun homeRendersStickersAndOpensTitoDex() {
         val (device, _) = launch()
-        rule.onNodeWithContentDescription("Trainer Card").assertExists()
+        rule.onNodeWithContentDescription("个人名片").assertExists()
         rule.onNodeWithContentDescription("打开 TitoDex").performClick()
         rule.waitForIdle()
         assertEquals(listOf(TITODEX_PACKAGE), device.launched)
@@ -224,7 +224,7 @@ class LauncherUiTest {
         rule.onNodeWithContentDescription("Alpha").assertExists()
     }
 
-    @Test fun v2PreferencesSurviveAndAreRewrittenAsSchema3() {
+    @Test fun v2PreferencesSurviveAndAreRewrittenAsCurrentSchema() {
         val v2 = """{"style":"flat","name":"小智","favorites":["com.retro/R"],"schema":2,"layout":"quiet","opacity":0.9,"libraryColumns":4}"""
         val (device, state) = launch(FakeDevice(v2))
         assertEquals("小智", state.settings.name)
@@ -232,7 +232,7 @@ class LauncherUiTest {
         rule.runOnIdle { state.dismissCoach() }
         rule.waitForIdle()
         val saved = JSONObject(device.stored!!)
-        assertEquals(3, saved.getInt("schema"))
+        assertEquals(SCHEMA, saved.getInt("schema"))
         assertEquals("小智", saved.getString("name"))
         assertEquals("com.retro/R", saved.getJSONArray("favorites").getString(0))
     }

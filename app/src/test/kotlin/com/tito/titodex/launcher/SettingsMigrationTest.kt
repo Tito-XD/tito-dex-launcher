@@ -50,11 +50,11 @@ class SettingsMigrationTest {
         }
     }
 
-    @Test fun roundTripsSchema3() {
+    @Test fun roundTripsCurrentSchema() {
         val s = Settings.decode(v2)
         val again = Settings.decode(s.encode())
         assertEquals(s, again)
-        assertEquals(3, JSONObject(s.encode()).getInt("schema"))
+        assertEquals(SCHEMA, JSONObject(s.encode()).getInt("schema"))
     }
 
     @Test fun keepsPreferenceKeyNamesReadableByTheOldBuild() {
@@ -80,7 +80,8 @@ class SettingsMigrationTest {
     }
 
     @Test fun corruptDataNeverThrows() {
-        assertEquals(Settings(), Settings.decode(null))
+        assertNull(Settings.decode(null).primaryApp)
+        assertEquals("玩家", Settings.decode(null).name)
         assertEquals(Settings(), Settings.decode("not json"))
         val s = Settings.decode("""{"schema":3,"style":42,"wallpaper":"photo","photo":null,"layouts":{"square":[{"id":"bogus"},{"id":"tito","c":9,"r":9,"size":"zz"},{"id":"tito"}]}}""")
         assertEquals(LauncherTheme.journal, s.theme)

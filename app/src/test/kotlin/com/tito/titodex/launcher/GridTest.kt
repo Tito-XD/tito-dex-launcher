@@ -92,7 +92,7 @@ class GridTest {
         assertTrue(opts.all { it.w >= 2 && it.h >= 2 })
         assertTrue(opts.isNotEmpty())
         val tooBig = Grid.widgetOptions(Orient.land, 9, 9)
-        assertEquals(listOf("6x3"), tooBig.map { it.key })
+        assertTrue(tooBig.isEmpty())
     }
 
     @Test fun addWidgetFindsSpaceOrHides() {
@@ -112,7 +112,7 @@ class GridTest {
         )
         val fixed = Grid.sanitize(sq, messy)
         assertEquals(listOf("clock", "tito", "widget:3", "trainer", "shelf"), fixed.map { it.id })
-        assertFalse(fixed.first { it.id == "tito" }.hidden)
+        assertTrue(fixed.first { it.id == "tito" }.hidden)
         assertTrue(fixed.first { it.id == "trainer" }.hidden)
         val c = cells(sq, fixed)
         assertEquals(c.size, c.toSet().size)

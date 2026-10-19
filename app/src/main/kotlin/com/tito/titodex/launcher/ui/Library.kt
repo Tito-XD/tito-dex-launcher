@@ -203,11 +203,15 @@ private fun SearchField(state: LauncherState) {
     val look = LocalLook.current
     val focus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
+    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
     LaunchedEffect(state.searchFocusRequest, state.mode) {
         if (state.searchFocusRequest > 0 && state.mode == Mode.Library) {
             // Focus is available as soon as the field is composed, even during arrival.
             runCatching { focus.requestFocus() }
             keyboard?.show()
+        } else {
+            focusManager.clearFocus()
+            keyboard?.hide()
         }
     }
     Box(Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, bottom = 6.dp)) {
@@ -249,7 +253,7 @@ private fun LibraryGrid(state: LauncherState, sheetH: Float, wDp: Float, sheetOf
     val scope = rememberCoroutineScope()
     val grid = rememberLazyGridState()
     val currentOffset by rememberUpdatedState(sheetOffset)
-    val cols = state.settings.libraryColumns + if (state.orient == Orient.land) 2 else 0
+    val cols = minOf(state.settings.libraryColumns + if (state.orient.landscape) 2 else 0, ((wDp - 38) / 74).toInt().coerceAtLeast(3))
     val apps = state.apps
     val pinned = state.settings.pinned
     val q = state.query.trim()
