@@ -26,6 +26,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.core.view.WindowInsetsControllerCompat
 import android.app.Activity
 import android.content.ContextWrapper
+import android.os.Build
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import com.tito.titodex.launcher.Grid
@@ -44,7 +45,17 @@ fun LauncherApp(state: LauncherState, clock: () -> Calendar = { Calendar.getInst
     SideEffect {
         activity?.window?.let { window ->
             @Suppress("DEPRECATION")
-            run { window.statusBarColor = android.graphics.Color.TRANSPARENT; window.navigationBarColor = android.graphics.Color.TRANSPARENT }
+            run {
+                window.statusBarColor = android.graphics.Color.TRANSPARENT
+                window.navigationBarColor = android.graphics.Color.TRANSPARENT
+                if (Build.VERSION.SDK_INT >= 28) window.navigationBarDividerColor = android.graphics.Color.TRANSPARENT
+                // Transparent colors alone still get a system contrast scrim in
+                // three-button navigation. Wallpaper already covers these areas.
+                if (Build.VERSION.SDK_INT >= 29) {
+                    window.isStatusBarContrastEnforced = false
+                    window.isNavigationBarContrastEnforced = false
+                }
+            }
             val dark = editingNow || com.tito.titodex.launcher.inkOnDark(state.settings)
             WindowInsetsControllerCompat(window, view).apply {
                 isAppearanceLightStatusBars = !dark
@@ -54,12 +65,6 @@ fun LauncherApp(state: LauncherState, clock: () -> Calendar = { Calendar.getInst
     }
     Box(Modifier.fillMaxSize()) {
         Wallpaper(state.settings.theme, state.settings.wallpaper, state.settings.effect, state.photoBitmap, Modifier.fillMaxSize())
-        if (state.settings.wallpaper == com.tito.titodex.launcher.Wall.photo) {
-            Box(Modifier.fillMaxWidth().windowInsetsTopHeight(WindowInsets.statusBars)
-                .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = .4f), Color.Black.copy(alpha = .15f)))))
-            Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().windowInsetsBottomHeight(WindowInsets.navigationBars)
-                .background(Color.Black.copy(alpha = .3f)))
-        }
         if (editingNow) Box(Modifier.fillMaxSize().background(editBackdrop(state.settings.theme)))
         // Keep the desktop stable when IME opens; only sheets/dialogs consume keyboard insets.
         val safe = contentInsets ?: WindowInsets.systemBars.union(WindowInsets.displayCutout)

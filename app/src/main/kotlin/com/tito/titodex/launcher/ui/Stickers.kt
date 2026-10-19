@@ -91,7 +91,6 @@ fun ClockSticker(state: LauncherState, s: Settings, size: String, now: Calendar,
     // to the available cell; never scale the date/weather as a rendered group.
     BoxWithConstraints(Modifier.fillMaxSize().padding(horizontal = 4.dp), contentAlignment = Alignment.CenterStart) {
         val narrowDate = maxWidth < 190.dp
-        val narrowWeather = maxWidth < 210.dp
         val banner = size == "w"
         val preferred = when { banner -> 74f; size == "l" -> 64f; else -> 50f }
         val numberSize = min(preferred, ((maxHeight.value - if (banner) 8f else 38f) / density.fontScale).coerceAtLeast(24f))
@@ -149,17 +148,38 @@ fun ClockSticker(state: LauncherState, s: Settings, size: String, now: Calendar,
                 }
             }
         } else {
-            Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                BoxWithConstraints(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.BottomStart) {
-                    val fitted = min(if (size == "l") 64f else 48f, maxHeight.value * .94f / density.fontScale)
+            // Keep two readable rows in a narrow 2x1 cell: time + temperature,
+            // then date. Stacking three rows would leave tiny clock numerals.
+            val splitMetadata = s.showWeather && maxWidth.value < 210f * density.fontScale
+            val horizontalTime = @Composable { modifier: Modifier ->
+                BoxWithConstraints(modifier, contentAlignment = Alignment.BottomStart) {
+                    val candidateSize = if (size == "l") 64f else 48f
+                    val candidate = timeStyle.copy(fontSize = candidateSize.sp, lineHeight = candidateSize.sp,
+                        platformStyle = PlatformTextStyle(includeFontPadding = false))
+                    val measured = timeMeasurer.measure("88:88", candidate, softWrap = false).size
+                    val fit = with(density) { minOf(1f,
+                        maxWidth.toPx() / measured.width.coerceAtLeast(1),
+                        maxHeight.toPx() / measured.height.coerceAtLeast(1)) } * .98f
                     Text(buildAnnotatedString { append("$hh:"); withStyle(SpanStyle(color = look.accentInk)) { append(mm) } },
-                        style = timeStyle.copy(fontSize = fitted.sp, lineHeight = fitted.sp,
-                            platformStyle = PlatformTextStyle(includeFontPadding = false)),
+                        style = candidate.copy(fontSize = (candidateSize * fit).sp, lineHeight = (candidateSize * fit).sp),
                         maxLines = 1, softWrap = false)
                 }
-                Row(Modifier.heightIn(min = 36.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            }
+            Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                if (splitMetadata) {
+                    Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        horizontalTime(Modifier.weight(1f))
+                        WeatherChip(state, s, weather, metaSize, live, compact = true)
+                    }
                     DateStamp(dateLabel(now), metaSize, compact = narrowDate)
-                    if (s.showWeather) WeatherChip(state, s, weather, metaSize, live, compact = narrowWeather)
+                } else {
+                    horizontalTime(Modifier.weight(1f).fillMaxWidth())
+                    Row(Modifier.heightIn(min = 36.dp), horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        DateStamp(dateLabel(now), metaSize, compact = narrowDate)
+                        if (s.showWeather) WeatherChip(state, s, weather, metaSize, live)
+                    }
                 }
             }
         }
@@ -222,7 +242,7 @@ private fun WeatherChip(state: LauncherState, s: Settings, weather: WeatherReadi
     val look = LocalLook.current
     val city = s.city
     val label = when {
-        city == null -> if (compact) "☀" else "＋ 天气"
+        city == null -> if (compact) "天气" else "＋ 天气"
         weather == null -> if (state.weatherError != null) "—" else "…"
         else -> "${weather.temperature.roundToInt()}°"
     }
@@ -231,16 +251,25 @@ private fun WeatherChip(state: LauncherState, s: Settings, weather: WeatherReadi
         look.plastic -> Triple(Color.White.copy(alpha = .4f), look.bgInk, RoundedCornerShape(17.dp))
         else -> Triple(Color(0xffafc7da), FlatInk, RoundedCornerShape(17.dp))
     }
-    Row(
-        (if (live) Modifier.padTarget(state, "wx", "天气") { state.pop = Pop.Weather(state.rects["wx"] ?: androidx.compose.ui.geometry.Rect.Zero) } else Modifier)
-            .background(bg, shape)
-            .then(if (look.journal) Modifier.border(1.25.dp, JournalLine, shape) else if (look.plastic) Modifier.border(1.dp, Color.White.copy(alpha = .7f), shape) else Modifier)
-            .padding(start = if (compact) 6.dp else if (look.journal) 8.dp else 10.dp, end = if (compact) 6.dp else 10.dp, top = 3.dp, bottom = 3.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(5.dp),
-    ) {
-        if (city != null && weather != null && !compact) Canvas(Modifier.size(14.dp)) { drawCloud(fg) }
-        Text(label, style = text(size, FontWeight.ExtraBold, fg), maxLines = 1, softWrap = false)
+    val density = LocalDensity.current
+    val measurer = rememberTextMeasurer()
+    val style = text(size, FontWeight.ExtraBold, fg)
+    BoxWithConstraints {
+        val labelWidth = with(density) { measurer.measure(label, style, softWrap = false).size.width.toDp() }
+        val narrow = compact || labelWidth + 24.dp > maxWidth
+        val displayLabel = if (city == null && narrow) "天气" else label
+        val showIcon = !compact && city != null && weather != null && labelWidth + 43.dp <= maxWidth
+        Row(
+            (if (live) Modifier.padTarget(state, "wx", "天气") { state.pop = Pop.Weather(state.rects["wx"] ?: androidx.compose.ui.geometry.Rect.Zero) } else Modifier)
+                .background(bg, shape)
+                .then(if (look.journal) Modifier.border(1.25.dp, JournalLine, shape) else if (look.plastic) Modifier.border(1.dp, Color.White.copy(alpha = .7f), shape) else Modifier)
+                .padding(horizontal = if (narrow) 4.dp else 10.dp, vertical = 3.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            if (showIcon) Canvas(Modifier.size(14.dp)) { drawCloud(fg) }
+            Text(displayLabel, style = style, maxLines = 1, softWrap = false)
+        }
     }
 }
 

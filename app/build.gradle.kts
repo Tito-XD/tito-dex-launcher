@@ -11,8 +11,8 @@ android {
         applicationId = "com.tito.titodex.launcher"
         minSdk = 24
         targetSdk = 36
-        versionCode = 7
-        versionName = "0.3.2-adaptive.1"
+        versionCode = 8
+        versionName = "0.3.2-adaptive.2"
         ndk { abiFilters += "arm64-v8a" }
     }
     buildTypes {

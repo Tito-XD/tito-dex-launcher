@@ -5,6 +5,8 @@ import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.runtime.*
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import com.tito.titodex.launcher.ui.LauncherApp
@@ -53,6 +55,8 @@ class AdaptiveUiTest {
 
     private fun verifyChrome(state: LauncherState, name: String, expected: Orient) {
         assertEquals(expected, state.orient)
+        assertFalse(rule.activity.window.isStatusBarContrastEnforced)
+        assertFalse(rule.activity.window.isNavigationBarContrastEnforced)
         val root = rule.onRoot().fetchSemanticsNode().boundsInRoot
         val footer = rule.onNodeWithTag("bottom-actions").fetchSemanticsNode().boundsInRoot
         assertTrue("footer over navigation bar", footer.bottom <= root.bottom - 47)
@@ -107,6 +111,75 @@ class AdaptiveUiTest {
     fun compactLandscapeKeepsNavigationAndEditControlsReachable() {
         val (_, state) = launch()
         verifyChrome(state, "landscape", Orient.land)
+    }
+
+    private fun assertWeatherFits(state: LauncherState, label: String) {
+        val node = rule.onNodeWithText(label)
+        node.assertIsDisplayed()
+        node.performSemanticsAction(SemanticsActions.GetTextLayoutResult) { action ->
+            val layouts = mutableListOf<TextLayoutResult>()
+            assertTrue(action(layouts))
+            val layout = layouts.single()
+            assertTrue("weather text clipped: $label size=${layout.size} line=${layout.getLineRight(0)} height=${layout.didOverflowHeight}",
+                layout.getLineRight(0) <= layout.size.width + 1 && !layout.didOverflowHeight)
+            assertEquals(16f, layouts.single().layoutInput.style.fontSize.value, .01f)
+        }
+        val bounds = node.fetchSemanticsNode().boundsInRoot
+        val clock = state.layout().first { it.id == "clock" }
+        val span = Grid.sizeOf(clock, state.orient)
+        val (cw, ch) = state.cellDp()
+        val density = rule.activity.resources.displayMetrics.density
+        val right = state.viewportOrigin.x + (Grid.PAD + (clock.c + span.w) * cw) * density
+        val bottom = state.viewportOrigin.y + (Grid.TOP + (clock.r + span.h) * ch) * density
+        assertTrue("weather outside clock cell: $bounds", bounds.right <= right && bounds.bottom <= bottom)
+    }
+
+    @Test @Config(qualifiers = "w360dp-h800dp-hdpi")
+    fun portraitWeatherKeepsFullLabelsAcrossThemesAndStillOpensForecast() {
+        val (_, state) = launch()
+        val originalLayout = state.layout()
+        for (theme in LauncherTheme.entries) {
+            rule.runOnIdle { state.update { it.copy(theme = theme, city = null) } }
+            rule.waitForIdle()
+            capture("portrait-unconfigured-weather-${theme.name}")
+            assertWeatherFits(state, "天气")
+            for (temperature in listOf(-28.0, 32.0)) {
+                rule.runOnIdle {
+                    state.update { it.copy(city = City("测试城市", 31.0, 121.0)) }
+                    state.weather = WeatherReading(temperature, 3, 0L)
+                }
+                rule.waitForIdle()
+                assertWeatherFits(state, "${temperature.toInt()}°")
+                if (temperature < 0) capture("portrait-weather-${theme.name}")
+            }
+        }
+        assertEquals(originalLayout, state.layout())
+        rule.onNodeWithContentDescription("天气").performTouchInput { click() }
+        rule.waitForIdle()
+        assertTrue(state.pop is Pop.Weather)
+    }
+
+    @Test @Config(qualifiers = "w320dp-h640dp-hdpi")
+    fun narrowVerticalClockKeepsWeatherTextAndOneByTwoFootprint() {
+        val (_, state) = launch()
+        rule.runOnIdle {
+            state.update { it.withLayout(state.orient, Grid.template(state.orient, Template.quiet)) }
+        }
+        for (theme in LauncherTheme.entries) {
+            rule.runOnIdle {
+                state.update { it.copy(theme = theme, city = City("测试城市", 31.0, 121.0)) }
+                state.weather = WeatherReading(-28.0, 3, 0L)
+            }
+            rule.waitForIdle()
+            capture("portrait-vertical-weather-${theme.name}")
+            assertWeatherFits(state, "-28°")
+            val span = Grid.sizeOf(state.layout().first { it.id == "clock" }, state.orient)
+            assertEquals(1, span.w)
+            assertEquals(2, span.h)
+            rule.runOnIdle { state.update { it.copy(city = null) } }
+            rule.waitForIdle()
+            assertWeatherFits(state, "天气")
+        }
     }
 
     @Test @Config(qualifiers = "w800dp-h450dp-hdpi")
