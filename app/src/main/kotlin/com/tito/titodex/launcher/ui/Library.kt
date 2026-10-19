@@ -47,7 +47,6 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
@@ -132,10 +131,11 @@ fun LibrarySheet(state: LauncherState, wDp: Float, hDp: Float) {
             Modifier.fillMaxSize().background(Color(0xff08101c).copy(alpha = .38f * scrimAlpha))
                 .then(if (open && !dragFromLib) Modifier.pointerInput(Unit) { detectTapGestures { state.closeLibrary() } } else Modifier),
         )
-        val shape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp)
+        val radius = if (look.plastic) 16.dp else 22.dp
+        val shape = RoundedCornerShape(topStart = radius, topEnd = radius)
         val bg = when {
             look.journal -> Modifier.background(Paper, shape).border(1.25.dp, JournalLine, shape)
-            look.plastic -> Modifier.background(Brush.verticalGradient(listOf(Color(0xf2f0f8fa), Color(0xf0dceaf0))), shape).border(1.1.dp, Color.White.copy(alpha = .85f), shape)
+            look.plastic -> Modifier.background(plasticSurfaceBrush(opaque = true), shape).border(.9.dp, Color.White.copy(alpha = .65f), shape)
             else -> Modifier.background(FlatPaper, shape)
         }
         val sheetModifier = Modifier.offset { IntOffset(0, (30.dp.toPx() + offset).roundToInt()) }

@@ -7,12 +7,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
@@ -39,7 +43,7 @@ val Yellow = Color(0xfff7d977)
 val Danger = Color(0xffd64545)
 val JournalInk = Color(0xff36475b)
 val JournalLine = Color(0xff7c8999)
-val PlasticInk = Color(0xff20334a)
+val PlasticInk = Color(0xff221f26)
 val FlatInk = Color(0xff1a1c20)
 val FlatPaper = Color(0xfff9f9ff)
 
@@ -95,7 +99,14 @@ fun lookOf(s: Settings): Look {
 val LocalLook = compositionLocalOf { lookOf(Settings()) }
 
 fun plateShape(look: Look, journalRadius: Dp = 16.dp): Shape = RoundedCornerShape(
-    when (look.theme) { LauncherTheme.journal -> journalRadius; LauncherTheme.plastic -> 26.dp; LauncherTheme.flat -> 20.dp },
+    when (look.theme) { LauncherTheme.journal -> journalRadius; LauncherTheme.plastic -> 16.dp; LauncherTheme.flat -> 20.dp },
+)
+
+/** Same warm, diagonal matte shell as the restored TitoDex App. */
+fun plasticSurfaceBrush(alpha: Float = .92f, opaque: Boolean = false): Brush = Brush.linearGradient(
+    0f to lerp(Cream, Color.White, .24f).copy(alpha = if (opaque) 1f else alpha),
+    .42f to lerp(Cream, Color(0xffb9dfe7), .045f).copy(alpha = if (opaque) 1f else alpha * .98f),
+    1f to lerp(Cream, Navy, .075f).copy(alpha = if (opaque) 1f else alpha * .95f),
 )
 
 enum class PlateKind { Plain, Trainer, Shelf, Tito }
@@ -115,17 +126,19 @@ fun Modifier.plate(look: Look, kind: PlateKind = PlateKind.Plain): Modifier {
             .background(Paper.copy(alpha = a), shape)
             .border(1.25.dp, JournalLine, shape)
         LauncherTheme.plastic -> {
-            val (top, bottom) = when (kind) {
-                PlateKind.Trainer -> Color(0xfff6f2ff).copy(alpha = a * .95f) to Color(0xffd7cdea).copy(alpha = a * .7f)
-                PlateKind.Shelf -> Color(0xffecfafc).copy(alpha = a * .9f) to Color(0xffb9dfe7).copy(alpha = a * .55f)
-                else -> Color.White.copy(alpha = a * .95f) to Color(0xffd2e6ee).copy(alpha = a * .62f)
-            }
             this
-                .shadow(10.dp, shape, ambientColor = Color(0x6013263d), spotColor = Color(0x8013263d))
-                .background(Brush.verticalGradient(listOf(top, bottom)), shape)
-                .border(1.1.dp, Color.White.copy(alpha = .78f), shape)
-                .drawBehind {
-                    drawLine(Color.White.copy(alpha = .95f), Offset(18.dp.toPx(), 1.dp.toPx()), Offset(size.width - 18.dp.toPx(), 1.dp.toPx()), 1.5.dp.toPx())
+                .shadow(6.dp, shape, ambientColor = Color(0x2813263d), spotColor = Color(0x3313263d))
+                .background(plasticSurfaceBrush(a), shape)
+                .border(.9.dp, Color.White.copy(alpha = .65f), shape)
+                .drawWithContent {
+                    drawContent()
+                    val inset = 1.35.dp.toPx()
+                    if (size.minDimension > inset * 2) drawRoundRect(
+                        Brush.linearGradient(0f to Color.White.copy(alpha = .26f),
+                            .48f to Color.White.copy(alpha = .03f), 1f to Navy.copy(alpha = .15f)),
+                        Offset(inset, inset), Size(size.width - inset * 2, size.height - inset * 2),
+                        CornerRadius(16.dp.toPx() - inset), style = Stroke(1.dp.toPx()),
+                    )
                 }
         }
         LauncherTheme.flat -> {

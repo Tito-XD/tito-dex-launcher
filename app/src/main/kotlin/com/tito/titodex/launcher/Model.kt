@@ -279,7 +279,9 @@ fun shelfItems(s: Settings, apps: List<AppEntry>): List<ShelfItem> {
 /** Surface alpha per theme; "背景露出" pushes each theme along its own curve. */
 fun plateAlpha(s: Settings): Float = when (s.theme) {
     LauncherTheme.journal -> 1 - s.reveal * .42f
-    LauncherTheme.plastic -> maxOf(.22f, .9f - s.reveal * .66f)
+    // Keep the default matte cream readable; still allow the same transparent
+    // endpoint without changing the user's stored exposure setting.
+    LauncherTheme.plastic -> maxOf(.22f, .96f - s.reveal * s.reveal * s.reveal * .74f)
     LauncherTheme.flat -> 1 - s.reveal * .5f
 }
 

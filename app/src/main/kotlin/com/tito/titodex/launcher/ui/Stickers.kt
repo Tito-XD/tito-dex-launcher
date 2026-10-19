@@ -31,17 +31,21 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -248,7 +252,7 @@ private fun WeatherChip(state: LauncherState, s: Settings, weather: WeatherReadi
     }
     val (bg, fg, shape) = when {
         look.journal -> Triple(Paper, JournalInk, RoundedCornerShape(5.dp, 17.dp, 17.dp, 5.dp))
-        look.plastic -> Triple(Color.White.copy(alpha = .4f), look.bgInk, RoundedCornerShape(17.dp))
+        look.plastic -> Triple(Cream.copy(alpha = .9f), PlasticInk, RoundedCornerShape(10.dp))
         else -> Triple(Color(0xffafc7da), FlatInk, RoundedCornerShape(17.dp))
     }
     val density = LocalDensity.current
@@ -290,12 +294,12 @@ fun TrainerSticker(state: LauncherState, s: Settings, size: String, hour: Int, l
     val avatar = @Composable { d: Int ->
         val (bg, fg) = when {
             look.journal -> Color(0xfff5e7b6) to Color(0xff93674f)
-            look.plastic -> Color(0xffd7cdea) to Color(0xff4b3f72)
+            look.plastic -> Yellow to PlasticInk
             else -> Navy to Yellow
         }
         Box(
             Modifier.size(d.dp).clip(CircleShape)
-                .background(if (look.plastic) Brush.radialGradient(listOf(Color.White, Color(0xffd7cdea), Color(0xffa99bc8))) else Brush.linearGradient(listOf(bg, bg)))
+                .background(if (look.plastic) Brush.linearGradient(listOf(Color(0xffffd778), Color(0xffffac78))) else Brush.linearGradient(listOf(bg, bg)))
                 .then(if (look.journal) Modifier.border(3.dp, Paper, CircleShape).padding(3.dp).border(1.5.dp, Color(0xffb18168), CircleShape) else Modifier),
             contentAlignment = Alignment.Center,
         ) { Text(initial, style = text((d * .44f).sp, FontWeight.ExtraBold, fg)) }
@@ -436,18 +440,31 @@ fun TitoSticker(state: LauncherState, size: String, live: Boolean) {
 fun AppIcon(icon: ImageBitmap?, label: String, d: Int = 50) {
     val look = LocalLook.current
     Box(
-        Modifier.size(d.dp).then(
-            if (look.plastic) Modifier.drawBehind {
-                drawRoundRect(Color(0x2113263d), Offset(-5.dp.toPx(), -5.dp.toPx()), Size(size.width + 10.dp.toPx(), size.height + 10.dp.toPx()), CornerRadius(21.dp.toPx()))
-                drawRoundRect(Color(0x8cffffff), Offset(-6.dp.toPx(), -6.dp.toPx()), Size(size.width + 12.dp.toPx(), size.height + 12.dp.toPx()), CornerRadius(22.dp.toPx()), style = Stroke(1.dp.toPx()))
-            } else Modifier,
-        ),
+        Modifier.size(d.dp),
         contentAlignment = Alignment.Center,
     ) {
-        if (icon != null) Image(icon, label, Modifier.fillMaxSize())
+        if (icon != null) Image(icon, label, Modifier.fillMaxSize().then(if (look.plastic) Modifier.iconMaterialLight() else Modifier))
         else Box(Modifier.fillMaxSize().background(Navy, if (look.flat) CircleShape else RoundedCornerShape(14.dp)), contentAlignment = Alignment.Center) {
             Text(label.take(1), style = text((d * .4f).sp, FontWeight.ExtraBold, Cream))
         }
+    }
+}
+
+/** Light belongs to the app's existing silhouette, including transparent holes.
+ * Offscreen isolation prevents SrcAtop from painting a rectangle on the shelf.
+ * This is a small cached static pass: no sweep, glow outside the icon or blur. */
+private fun Modifier.iconMaterialLight(): Modifier = graphicsLayer {
+    compositingStrategy = CompositingStrategy.Offscreen
+}.drawWithCache {
+    val light = Brush.linearGradient(
+        0f to Color.White.copy(alpha = .16f),
+        .42f to Color.White.copy(alpha = .025f),
+        .65f to Color.Transparent,
+        1f to NavyDeep.copy(alpha = .055f),
+    )
+    onDrawWithContent {
+        drawContent()
+        drawRect(light, blendMode = BlendMode.SrcAtop)
     }
 }
 
@@ -572,7 +589,7 @@ fun ShelfSticker(state: LauncherState, items: List<ShelfItem>, size: String, liv
 @Composable
 fun WidgetSticker(state: LauncherState, appWidgetId: Int, live: Boolean, label: String) {
     val look = LocalLook.current
-    val shape = RoundedCornerShape(if (look.plastic) 22.dp else 16.dp)
+    val shape = RoundedCornerShape(16.dp)
     if (!live) {
         Box(Modifier.fillMaxSize().plate(look), contentAlignment = Alignment.Center) {
             Text(label, style = text(12.sp, color = look.ink), maxLines = 2, textAlign = TextAlign.Center)

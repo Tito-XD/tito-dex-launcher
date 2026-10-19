@@ -45,6 +45,7 @@ class FakeWidgets : WidgetBridge {
 
 class FakeDevice(var stored: String? = null) : Device {
     val launched = mutableListOf<String>()
+    var icons: Map<String, ImageBitmap> = emptyMap()
     override val widgets = FakeWidgets()
     override fun loadSettings() = stored
     override fun saveSettings(json: String) { stored = json }
@@ -53,7 +54,7 @@ class FakeDevice(var stored: String? = null) : Device {
         AppEntry("com.b", "B", "Beta", "B"),
         AppEntry("com.retro", "R", "RetroArch", "R"),
     )
-    override fun icon(app: AppEntry): ImageBitmap? = null
+    override fun icon(app: AppEntry): ImageBitmap? = icons[app.id]
     override fun status() = DeviceStatus(battery = 80, wifi = true, online = true)
     override fun launch(app: AppEntry): Boolean { launched += app.id; return true }
     override fun launchPackage(pkg: String): Boolean { launched += pkg; return true }

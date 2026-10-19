@@ -79,7 +79,7 @@ private fun LibraryHandle(state: LauncherState, live: Boolean, modifier: Modifie
     val shape = if (look.journal) RoundedCornerShape(11.dp, 11.dp, 0.dp, 0.dp) else RoundedCornerShape(15.dp)
     val (bg, fg) = when {
         look.journal -> Paper.copy(alpha = .94f) to JournalInk
-        look.plastic -> Color.White.copy(alpha = .42f) to look.bgInk
+        look.plastic -> Cream.copy(alpha = .9f) to PlasticInk
         else -> Navy to Cream
     }
     Box(modifier.width(140.dp).height(44.dp).pointerInput(Unit) { detectTapGestures { state.openLibrary() } }.then(if (live) Modifier.padTarget(state, "handle", "应用库", 14f) { state.openLibrary() } else Modifier), contentAlignment = Alignment.BottomCenter) {

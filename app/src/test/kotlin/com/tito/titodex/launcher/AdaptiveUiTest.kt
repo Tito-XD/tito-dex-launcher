@@ -113,6 +113,27 @@ class AdaptiveUiTest {
         verifyChrome(state, "landscape", Orient.land)
     }
 
+    private fun verifyPlasticShelf(name: String) {
+        val (device, state) = launch()
+        rule.runOnIdle {
+            device.icons = plasticPreviewIcons()
+            state.update { it.copy(theme = LauncherTheme.plastic, pinned = state.apps.map { app -> app.id }) }
+        }
+        rule.waitForIdle()
+        capture("plastic-matte-$name-home")
+        rule.onNode(hasContentDescription("Beta") and hasClickAction()).performTouchInput { click() }
+        assertEquals(listOf("com.b/B"), device.launched)
+        rule.onNodeWithContentDescription("应用库").performClick()
+        rule.waitForIdle()
+        capture("plastic-matte-$name-library")
+        assertEquals(Mode.Library, state.mode)
+    }
+
+    @Test fun mattePlasticShelfKeepsIconActions() = verifyPlasticShelf("square")
+
+    @Test @Config(qualifiers = "w360dp-h800dp-hdpi")
+    fun mattePlasticShelfFitsPortrait() = verifyPlasticShelf("portrait")
+
     private fun assertWeatherFits(state: LauncherState, label: String) {
         val node = rule.onNodeWithText(label)
         node.assertIsDisplayed()

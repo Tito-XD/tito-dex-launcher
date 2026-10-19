@@ -79,10 +79,12 @@ fun DrawScope.drawWall(theme: LauncherTheme, wall: Wall, photo: ImageBitmap?) {
                 }
             }
             LauncherTheme.plastic -> {
-                drawRect(Brush.linearGradient(listOf(Color(0xff344d6b), Color(0xff58768f), Color(0xff758fa2)), Offset(0f, 0f), Offset(w * .5f, h)))
-                drawCircle(Brush.radialGradient(listOf(Color(0x8cb9dfe7), Color.Transparent), Offset(w * .82f, h * .16f), w * .34f), w * .34f, Offset(w * .82f, h * .16f))
-                drawCircle(Brush.radialGradient(listOf(Color(0x73d7cdea), Color.Transparent), Offset(w * .10f, h * .72f), w * .40f), w * .40f, Offset(w * .10f, h * .72f))
-                drawCircle(Brush.radialGradient(listOf(Color(0x61bfe2d4), Color.Transparent), Offset(w * .72f, h), w * .42f), w * .42f, Offset(w * .72f, h))
+                drawRect(Brush.linearGradient(0f to Color(0xff344d6b), .54f to Color(0xff58768f), 1f to Color(0xff758fa2)))
+                for ((point, radius, color) in listOf(
+                    Triple(Offset(w * .08f, h * .16f), size.minDimension * .74f, Color(0x2eb9dfe7)),
+                    Triple(Offset(w * .94f, h * .38f), size.minDimension * .58f, Color(0x24d7cdea)),
+                    Triple(Offset(w * .28f, h * .96f), size.minDimension * .70f, Color(0x1fbfe2d4)),
+                )) drawCircle(Brush.radialGradient(listOf(color, Color.Transparent), point, radius), radius, point)
             }
             LauncherTheme.flat -> {
                 drawRect(Color(0xffe3e6ef))
