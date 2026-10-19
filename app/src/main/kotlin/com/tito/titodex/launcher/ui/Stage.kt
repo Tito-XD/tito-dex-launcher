@@ -1,6 +1,7 @@
 package com.tito.titodex.launcher.ui
 
 import androidx.compose.animation.core.animateDecay
+import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -32,12 +33,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
@@ -50,6 +54,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.findRootCoordinates
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
@@ -86,6 +91,8 @@ private enum class Outcome { Up, Move, Long, Cancel }
 fun Stage(
     state: LauncherState, s: Settings, o: Orient, wDp: Float, hDp: Float, live: Boolean, editLayout: Boolean,
     photo: ImageBitmap?, now: Calendar, modifier: Modifier = Modifier, paintWallpaper: Boolean = true,
+    entrance: Float = 1f,
+    wallpaperCornerDp: Float = 0f,
 ) {
     val look = lookOf(s)
     val density = LocalDensity.current
@@ -291,9 +298,11 @@ fun Stage(
 
     CompositionLocalProvider(LocalLook provides look) {
         Box(
-            modifier.size(wDp.dp, hDp.dp).clipToBounds().onGloballyPositioned { if (live) coords = it }.then(gestures),
+            modifier.size(wDp.dp, hDp.dp).then(if (state.moduleArrival == null || !live) Modifier.clipToBounds() else Modifier)
+                .onGloballyPositioned { if (live) coords = it }.then(gestures),
         ) {
-            if (paintWallpaper) Wallpaper(s.theme, s.wallpaper, s.effect, photo, Modifier.fillMaxSize())
+            if (paintWallpaper) Wallpaper(s.theme, s.wallpaper, s.effect, photo,
+                Modifier.fillMaxSize().clip(RoundedCornerShape(wallpaperCornerDp.dp)))
             if (editLayout) {
                 for (r in 0 until g.rows) for (c in 0 until g.cols) {
                     Box(
@@ -305,6 +314,7 @@ fun Stage(
             }
             val items = shelfItems(s, state.apps)
             val hour = now.get(Calendar.HOUR_OF_DAY)
+            val order = layout.filterNot { it.hidden }.sortedWith(compareBy({ it.r }, { it.c })).map { it.id }
             for (st in layout) {
                 if (st.hidden) continue
                 key(st.id) {
@@ -312,12 +322,46 @@ fun Stage(
                 val d = drag?.takeIf { it.id == st.id }
                 val left = dragMotionFloat(Grid.PAD + st.c * cw, d?.left, motion)
                 val top = dragMotionFloat(Grid.TOP + st.r * ch, d?.top, motion)
-                SideEffect { drawnRects[st.id] = Rect(left, top, left + z.w * cw, top + z.h * ch) }
+                val width = motionFloat(z.w * cw, motion).coerceAtLeast(1f)
+                val height = motionFloat(z.h * ch, motion).coerceAtLeast(1f)
+                val arrival = state.moduleArrival?.takeIf { live && it.id == st.id }
+                val flight = remember { Animatable(if (arrival == null) 1f else 0f) }
+                val source = remember(arrival) {
+                    val c = coords
+                    if (arrival != null && c != null && c.isAttached)
+                        c.localPositionOf(c.findRootCoordinates(), arrival.origin.center) / density.density else null
+                }
+                LaunchedEffect(arrival, motion) {
+                    if (arrival != null && motion.enabled) {
+                        flight.snapTo(0f)
+                        flight.animateTo(1f, motion.glide())
+                    } else flight.snapTo(1f)
+                    if (arrival != null && state.moduleArrival === arrival) state.moduleArrival = null
+                }
+                val travel = if (arrival != null && motion.enabled) flight.value else 1f
+                val fresh = revealProgress(st.id, motion)
+                val p = minOf(entranceFraction(entrance, order.indexOf(st.id), motion), fresh.coerceIn(0f, 1f))
+                val incoming = if (motion.enabled) p else if (entrance == 0f) 0f else 1f
+                val grow = if (arrival != null) .28f + .72f * travel else .975f + .025f * incoming
+                val displayLeft = left + if (source != null && arrival != null) (source.x - left - width / 2) * (1f - travel) else 0f
+                val displayTop = top + if (source != null && arrival != null) (source.y - top - height / 2) * (1f - travel)
+                    else -(1f - incoming) * motion.entranceTravel
+                SideEffect {
+                    val x = displayLeft + width * (1f - grow) / 2
+                    val y = displayTop + height * (1f - grow) / 2
+                    drawnRects[st.id] = Rect(x, y, x + width * grow, y + height * grow)
+                }
                 val lift = motionFloat(if (d != null && motion.enabled) 1.035f else if (editLayout && look.plastic) .985f else 1f, motion)
                 val selected = editLayout && state.selected == st.id
                 val holding = editLayout && state.holding == st.id
                 Box(
-                    Modifier.offset { IntOffset(left.dp.roundToPx(), top.dp.roundToPx()) }.size((z.w * cw).dp, (z.h * ch).dp)
+                    Modifier.offset { IntOffset(displayLeft.dp.roundToPx(), displayTop.dp.roundToPx()) }.size(width.dp, height.dp)
+                        .zIndex(if (arrival != null || d != null) 1f else 0f)
+                        .graphicsLayer {
+                            scaleX = grow; scaleY = grow
+                            alpha = if (arrival != null) .35f + .65f * travel else incoming
+                            compositingStrategy = CompositingStrategy.ModulateAlpha
+                        }
                         .then(if (editLayout && live) Modifier.padTarget(state, "st:${st.id}", state.stickerLabel(st), 20f) { state.padActivateSticker(st.id) } else Modifier)
                         .padding(5.dp),
                 ) {

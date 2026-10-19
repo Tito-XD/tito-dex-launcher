@@ -22,6 +22,13 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.Alignment
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.testTag
 import androidx.core.view.WindowInsetsControllerCompat
 import android.app.Activity
@@ -42,6 +49,15 @@ fun LauncherApp(state: LauncherState, clock: () -> Calendar = { Calendar.getInst
     val view = LocalView.current
     val activity = generateSequence(view.context) { (it as? ContextWrapper)?.baseContext }.filterIsInstance<Activity>().firstOrNull()
     val editingNow = state.mode == Mode.Edit
+    val motion = launcherMotion(state.settings.theme, state.settings.motion)
+    var touched by remember { mutableStateOf(false) }
+    val entrance = desktopEntrance(state.loaded && state.appsLoaded,
+        touched || state.input == InputKind.Pad || state.mode != Mode.Home, motion)
+    LaunchedEffect(state.moduleArrival, state.mode, state.orient, state.settings.layouts) {
+        val arrival = state.moduleArrival
+        if (arrival != null && (state.mode != Mode.Edit || state.layout().none { it.id == arrival.id && !it.hidden }))
+            state.moduleArrival = null
+    }
     SideEffect {
         activity?.window?.let { window ->
             @Suppress("DEPRECATION")
@@ -63,8 +79,17 @@ fun LauncherApp(state: LauncherState, clock: () -> Calendar = { Calendar.getInst
             }
         }
     }
-    Box(Modifier.fillMaxSize()) {
-        Wallpaper(state.settings.theme, state.settings.wallpaper, state.settings.effect, state.photoBitmap, Modifier.fillMaxSize())
+    Box(Modifier.fillMaxSize().onPreviewKeyEvent {
+        if (it.type == KeyEventType.KeyDown) { touched = true; state.moduleArrival = null }
+        false
+    }.pointerInput(state) {
+        awaitEachGesture {
+            awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+            touched = true
+            state.moduleArrival = null
+        }
+    }) {
+        Wallpaper(state.settings.theme, state.settings.wallpaper, state.settings.effect, state.photoBitmap, Modifier.fillMaxSize(), motion)
         if (editingNow) Box(Modifier.fillMaxSize().background(editBackdrop(state.settings.theme)))
         // Keep the desktop stable when IME opens; only sheets/dialogs consume keyboard insets.
         val safe = contentInsets ?: WindowInsets.systemBars.union(WindowInsets.displayCutout)
@@ -78,6 +103,7 @@ fun LauncherApp(state: LauncherState, clock: () -> Calendar = { Calendar.getInst
             SideEffect {
                 state.screenDp = wDp to hDp
                 if (state.orient != o) {
+                    state.moduleArrival = null
                     if (state.holding != null) state.cancelHold()
                     state.orient = o
                     state.selected = null
@@ -97,10 +123,17 @@ fun LauncherApp(state: LauncherState, clock: () -> Calendar = { Calendar.getInst
                 }
             }
             LaunchedEffect(state.settings.photo) { state.loadPhoto() }
-            LaunchedEffect(state.input, state.mode, state.homeFocusRequest, state.settingsOpen, state.loaded, state.primaryPicker, o) {
-                if (state.input != InputKind.Pad || !state.loaded || state.settingsOpen) return@LaunchedEffect
+            LaunchedEffect(state.input, state.mode, state.homeFocusRequest, state.settingsOpen, state.loaded,
+                state.primaryPicker, state.cityDialog, state.widgetPicker, state.licenses, state.pop, state.coach, o) {
+                if (state.input != InputKind.Pad || !state.loaded) return@LaunchedEffect
                 delay(80)
+                if (state.cityDialog) { FocusTargets.request("c:search"); return@LaunchedEffect }
+                if (state.widgetPicker) { FocusTargets.request("w:close"); return@LaunchedEffect }
                 if (state.primaryPicker) { FocusTargets.request("primary:cancel"); return@LaunchedEffect }
+                if (state.licenses) { FocusTargets.request("lic:back"); return@LaunchedEffect }
+                if (state.settingsOpen) { FocusTargets.request("s:back"); return@LaunchedEffect }
+                if (state.pop != null) return@LaunchedEffect // PopLayer owns its initial field/button.
+                if (state.coach) { FocusTargets.request("coach"); return@LaunchedEffect }
                 val current = state.focusKey
                 val owned = when (state.mode) {
                     Mode.Home -> current != null && !current.startsWith("lib") && !current.startsWith("e:") && !current.startsWith("st:")
@@ -116,8 +149,10 @@ fun LauncherApp(state: LauncherState, clock: () -> Calendar = { Calendar.getInst
             }
 
             val look = lookOf(state.settings)
-            val motion = launcherMotion(look.theme, state.settings.motion)
-            CompositionLocalProvider(LocalLook provides look, LocalLauncherMotion provides motion) {
+            val focusSurface = listOf(state.mode, state.tab, state.primaryPicker, state.cityDialog,
+                state.widgetPicker, state.settingsOpen, state.licenses, state.pop?.javaClass, state.coach, o)
+            val focusRail = remember(focusSurface) { FocusRail() }
+            CompositionLocalProvider(LocalLook provides look, LocalLauncherMotion provides motion, LocalFocusRail provides focusRail) {
                 val editing = state.mode == Mode.Edit
                 val f = stageFrame(editing, state.tab, o, wDp, hDp)
                 val scale = motionFloat(f.scale, motion)
@@ -128,11 +163,13 @@ fun LauncherApp(state: LauncherState, clock: () -> Calendar = { Calendar.getInst
                     state, state.settings, o, wDp, hDp, live = true,
                     editLayout = editing && state.tab == com.tito.titodex.launcher.EditTab.layout,
                     photo = state.photoBitmap, now = now, paintWallpaper = editing,
+                    entrance = entrance,
+                    wallpaperCornerDp = if (editing) 18f / scale else 0f,
                     modifier = Modifier.graphicsLayer {
                         transformOrigin = TransformOrigin(0f, 0f)
                         scaleX = scale; scaleY = scale
                         translationX = tx * density; translationY = ty * density
-                        if (scale < .999f) { clip = true; shape = RoundedCornerShape((18 / scale).dp); shadowElevation = 18.dp.toPx() }
+                        if (scale < .999f) { clip = state.moduleArrival == null; shape = RoundedCornerShape((18 / scale).dp); shadowElevation = 18.dp.toPx() }
                     },
                 )
                 if (editing) Box(Modifier.fillMaxSize().padding(bottom = Grid.bottom(wDp).dp)) {
@@ -149,6 +186,7 @@ fun LauncherApp(state: LauncherState, clock: () -> Calendar = { Calendar.getInst
                 WidgetPicker(state)
                 PrimaryPicker(state)
                 ToastLayer(state)
+                SlidingFocus(state, focusRail)
             }
         }
     }

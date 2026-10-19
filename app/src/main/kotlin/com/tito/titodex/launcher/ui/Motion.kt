@@ -11,12 +11,14 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
@@ -36,6 +38,20 @@ import com.tito.titodex.launcher.LauncherTheme
  * are deliberately smaller, finite and interruptible; input never waits on motion.
  */
 internal data class LauncherMotion(val theme: LauncherTheme, val enabled: Boolean) {
+    val entranceMillis: Int get() = when (theme) {
+        LauncherTheme.journal -> 320
+        LauncherTheme.plastic -> 340
+        LauncherTheme.flat -> 220
+    }
+    val staggerMillis: Int get() = when (theme) {
+        LauncherTheme.journal -> 42
+        LauncherTheme.plastic -> 46
+        LauncherTheme.flat -> 30
+    }
+    val entranceTravel: Float get() = if (theme == LauncherTheme.flat) 8f else 16f
+    fun glide(): FiniteAnimationSpec<Float> = if (!enabled) snap() else tween(
+        if (theme == LauncherTheme.flat) 180 else 300, easing = CubicBezierEasing(.22f, 1f, .36f, 1f),
+    )
     fun settle(): FiniteAnimationSpec<Float> = when {
         !enabled -> snap()
         theme == LauncherTheme.journal -> spring(dampingRatio = .82f, stiffness = 650f, visibilityThreshold = .001f)
@@ -59,6 +75,34 @@ internal data class LauncherMotion(val theme: LauncherTheme, val enabled: Boolea
         LauncherTheme.plastic -> 4f
         LauncherTheme.flat -> 2f
     }
+}
+
+/** One timeline above the grid. Saved settings loading cannot consume the entrance. */
+@Composable
+internal fun desktopEntrance(ready: Boolean, interrupted: Boolean, motion: LauncherMotion): Float {
+    val timeline = remember { Animatable(0f) }
+    var started by remember { mutableStateOf(false) }
+    var startingTheme by remember { mutableStateOf<LauncherTheme?>(null) }
+    LaunchedEffect(ready, interrupted, motion) {
+        when {
+            interrupted || (ready && !motion.enabled) || (started && startingTheme != motion.theme) -> {
+                started = true
+                timeline.snapTo(1f)
+            }
+            ready && !started -> {
+                started = true
+                startingTheme = motion.theme
+                timeline.animateTo(1f, tween(motion.entranceMillis + motion.staggerMillis * 3, easing = LinearEasing))
+            }
+        }
+    }
+    return if (interrupted || (ready && !motion.enabled)) 1f else timeline.value
+}
+
+internal fun entranceFraction(timeline: Float, order: Int, motion: LauncherMotion): Float {
+    val total = motion.entranceMillis + motion.staggerMillis * 3
+    val p = ((timeline * total - order.coerceIn(0, 3) * motion.staggerMillis) / motion.entranceMillis).coerceIn(0f, 1f)
+    return CubicBezierEasing(.22f, 1f, .36f, 1f).transform(p)
 }
 
 internal val LocalLauncherMotion = staticCompositionLocalOf { LauncherMotion(LauncherTheme.journal, false) }

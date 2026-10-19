@@ -1,10 +1,13 @@
 package com.tito.titodex.launcher.ui
 
 import android.os.Build
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clipToBounds
@@ -23,20 +26,35 @@ import com.tito.titodex.launcher.Effect
 import com.tito.titodex.launcher.LauncherTheme
 import com.tito.titodex.launcher.Wall
 
+private data class WallImage(val theme: LauncherTheme, val wall: Wall, val photo: ImageBitmap?)
+
 /** Original vector backgrounds per theme, plus the user's private photo. Effects are layered on top. */
 @Composable
-fun Wallpaper(theme: LauncherTheme, wall: Wall, effect: Effect, photo: ImageBitmap?, modifier: Modifier = Modifier) {
+internal fun Wallpaper(theme: LauncherTheme, wall: Wall, effect: Effect, photo: ImageBitmap?, modifier: Modifier = Modifier,
+    motion: LauncherMotion = LocalLauncherMotion.current) {
+    val blurTarget = if (effect == Effect.frost) 1f else 0f
+    val dimTarget = if (effect == Effect.dim) 1f else 0f
+    val scanTarget = if (effect == Effect.scanlines) 1f else 0f
+    val blurValue by animateFloatAsState(blurTarget, motion.glide(), label = "wallpaper frost")
+    val dimValue by animateFloatAsState(dimTarget, motion.glide(), label = "wallpaper dim")
+    val scanValue by animateFloatAsState(scanTarget, motion.glide(), label = "wallpaper lines")
+    val frost = if (motion.enabled) blurValue else blurTarget
+    val dim = if (motion.enabled) dimValue else dimTarget
+    val lines = if (motion.enabled) scanValue else scanTarget
+    val target = WallImage(theme, wall, photo.takeIf { wall == Wall.photo })
     Box(modifier.clipToBounds()) {
-        val frost = effect == Effect.frost && Build.VERSION.SDK_INT >= 31
-        Canvas(Modifier.fillMaxSize().then(if (frost) Modifier.blur(9.dp) else Modifier)) {
+        val blur = Modifier.fillMaxSize().then(if (frost > .001f && Build.VERSION.SDK_INT >= 31) Modifier.blur((9f * frost).dp) else Modifier)
+        if (motion.enabled) Crossfade(target, Modifier.fillMaxSize(), animationSpec = motion.glide(), label = "wallpaper image") { frame ->
+            Canvas(blur) { drawWall(frame.theme, if (frame.wall == Wall.photo && frame.photo == null) Wall.none else frame.wall, frame.photo) }
+        } else Canvas(blur) {
             drawWall(theme, if (wall == Wall.photo && photo == null) Wall.none else wall, photo)
         }
-        if (effect == Effect.frost && !frost) Canvas(Modifier.fillMaxSize()) { drawRect(Color(0x55ffffff)) }
-        if (effect == Effect.dim) Canvas(Modifier.fillMaxSize()) { drawRect(Color(0x6b0b2036)) }
-        if (effect == Effect.scanlines) Canvas(Modifier.fillMaxSize()) {
+        if (frost > 0f && Build.VERSION.SDK_INT < 31) Canvas(Modifier.fillMaxSize()) { drawRect(Color.White.copy(alpha = frost / 3f)) }
+        if (dim > 0f) Canvas(Modifier.fillMaxSize()) { drawRect(Color(0xff0b2036).copy(alpha = dim * .42f)) }
+        if (lines > 0f) Canvas(Modifier.fillMaxSize()) {
             var y = 0f
             val step = 4.dp.toPx()
-            while (y < size.height) { drawRect(Color(0x1f000000), Offset(0f, y), Size(size.width, 1.dp.toPx())); y += step }
+            while (y < size.height) { drawRect(Color.Black.copy(alpha = lines * .122f), Offset(0f, y), Size(size.width, 1.dp.toPx())); y += step }
         }
     }
 }

@@ -35,6 +35,9 @@ class Session(val start: Settings) { val stack = ArrayDeque<Settings>() }
 /** An app icon being dragged: shelf reorder / remove, or library → shelf. Position is in root pixels. */
 data class IconDrag(val app: AppEntry, val pos: androidx.compose.ui.geometry.Offset, val fromShelf: Boolean, val insert: Int? = null, val overRemove: Boolean = false)
 
+/** Ephemeral presentation hint; never serialized or added to undo history. */
+data class ModuleArrival(val id: String, val origin: Rect)
+
 class LauncherState(
     val device: Device,
     private val weatherSource: WeatherSource,
@@ -47,6 +50,9 @@ class LauncherState(
     var appsError by mutableStateOf<String?>(null)
     var status by mutableStateOf(DeviceStatus())
     var loaded by mutableStateOf(false)
+    var appsLoaded by mutableStateOf(false)
+        private set
+    var moduleArrival by mutableStateOf<ModuleArrival?>(null)
 
     var mode by mutableStateOf(Mode.Home)
         private set
@@ -121,6 +127,7 @@ class LauncherState(
         scope.launch {
             val result = withContext(io) { runCatching { device.loadApps() } }
             result.onSuccess { apps = it; appsError = null }.onFailure { appsError = "应用库读取失败，点击重试" }
+            appsLoaded = true // A failed/empty catalog must not hold the desktop entrance forever.
         }
     }
 
@@ -471,7 +478,9 @@ class LauncherState(
     fun show(id: String) {
         val next = Grid.show(orient, layout(), id)
         if (next == null) { selected = id; showToast("没有空位：在托盘调整尺寸，或换到更大的布局"); return }
+        val origin = rects["e:show:$id"] ?: rects["e:restore"]
         commitLayout(next)
+        moduleArrival = origin?.let { ModuleArrival(id, it) }
         selected = id
     }
 

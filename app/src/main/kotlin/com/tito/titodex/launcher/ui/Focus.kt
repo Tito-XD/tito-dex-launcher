@@ -3,6 +3,11 @@ package com.tito.titodex.launcher.ui
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.runtime.DisposableEffect
@@ -21,9 +26,12 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.lerp
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -54,6 +62,59 @@ object FocusTargets {
     }
 }
 
+internal class FocusRail {
+    val corners = mutableStateMapOf<String, Float>()
+    // Last painted geometry is only a presentation cache, never a layout/focus target.
+    var painted: Rect? = null
+}
+internal val LocalFocusRail = staticCompositionLocalOf<FocusRail?> { null }
+
+/** One moving outline per surface. It never participates in hit testing or focus. */
+@Composable
+internal fun SlidingFocus(state: LauncherState, rail: FocusRail) {
+    val motion = LocalLauncherMotion.current
+    val key = state.focusKey?.takeIf { state.input == InputKind.Pad && rail.corners.containsKey(it) }
+    val progress = remember { Animatable(1f) }
+    var from by remember { mutableStateOf<Rect?>(null) }
+    LaunchedEffect(key, motion) {
+        from = rail.painted
+        if (key != null && from != null && motion.enabled) {
+            progress.snapTo(0f)
+            progress.animateTo(1f, motion.glide())
+        } else { progress.snapTo(1f); if (key == null) rail.painted = null }
+    }
+    val look = LocalLook.current
+    Canvas(Modifier.fillMaxSize()) {
+        val target = key?.let { state.rects[it] }?.takeIf { it.width > 0 && it.height > 0 } ?: return@Canvas
+        // The target is resolved live, including sheet/stage transforms and scroll.
+        val end = target.translate(-state.viewportOrigin)
+        val start = from
+        val bounds = if (motion.enabled && start != null) lerp(start, end, progress.value.coerceIn(0f, 1f)) else end
+        rail.painted = bounds
+        drawFocusRing(bounds, rail.corners[key] ?: 18f, look.theme)
+    }
+}
+
+private fun DrawScope.drawFocusRing(bounds: Rect, cornerDp: Float, theme: LauncherTheme) {
+    val inset = (if (theme == LauncherTheme.flat) -5 else -3).dp.toPx()
+    val tl = bounds.topLeft + Offset(inset, inset)
+    val sz = Size(bounds.width - inset * 2, bounds.height - inset * 2)
+    val r = CornerRadius(cornerDp.dp.toPx())
+    when (theme) {
+        LauncherTheme.journal -> {
+            drawRoundRect(Color(0x2ef7d977), tl, sz, r)
+            drawRoundRect(Color(0xffae9562), tl, sz, r, style = Stroke(4.5.dp.toPx()))
+            drawRoundRect(Yellow, tl, sz, r, style = Stroke(3.dp.toPx()))
+        }
+        LauncherTheme.plastic -> {
+            drawRoundRect(Color(0x66b9dfe7), tl - Offset(6.dp.toPx(), 6.dp.toPx()),
+                Size(sz.width + 12.dp.toPx(), sz.height + 12.dp.toPx()), CornerRadius(r.x + 6.dp.toPx()), style = Stroke(8.dp.toPx()))
+            drawRoundRect(Color(0xf2ffffff), tl, sz, r, style = Stroke(2.dp.toPx()))
+        }
+        LauncherTheme.flat -> drawRoundRect(FlatInk, tl, sz, r, style = Stroke(3.5.dp.toPx()))
+    }
+}
+
 /** Keep live coordinates through parent layer transforms without relayout. */
 internal fun Modifier.trackedBounds(state: LauncherState, key: String, active: Boolean = true): Modifier = composed {
     val coordinates = remember { arrayOfNulls<LayoutCoordinates>(1) }
@@ -78,8 +139,15 @@ fun Modifier.padTarget(state: LauncherState, key: String, label: String? = null,
     val requester = remember(key) { FocusRequester() }
     val look = LocalLook.current
     val motion = LocalLauncherMotion.current
+    val rail = LocalFocusRail.current
     val active = LocalMotionControls.current && when {
+        state.cityDialog -> key.startsWith("c:")
+        state.widgetPicker -> key.startsWith("w:")
         state.primaryPicker -> key.startsWith("primary:")
+        state.licenses -> key.startsWith("lic:")
+        state.settingsOpen -> key.startsWith("s:")
+        state.pop != null -> key.startsWith("p:")
+        state.coach -> key == "coach"
         key.startsWith("lib") || key.startsWith("l:") -> state.mode == Mode.Library
         key.startsWith("st:") || key.startsWith("e:") -> state.mode == Mode.Edit
         key in setOf("tito", "trainer", "wx", "handle") || key.startsWith("shelf:") -> state.mode == Mode.Home && state.pop == null && !state.settingsOpen
@@ -91,7 +159,7 @@ fun Modifier.padTarget(state: LauncherState, key: String, label: String? = null,
     val arrival = remember { Animatable(1f) }
     val showFocus = focused && active && state.input == InputKind.Pad
     LaunchedEffect(showFocus, motion) {
-        if (showFocus && motion.enabled) {
+        if (showFocus && motion.enabled && rail == null) {
             arrival.snapTo(0f)
             arrival.animateTo(1f, motion.settle())
         } else arrival.snapTo(1f)
@@ -102,6 +170,10 @@ fun Modifier.padTarget(state: LauncherState, key: String, label: String? = null,
         onDispose {
             if (FocusTargets.requesters[key] === requester) FocusTargets.requesters.remove(key)
         }
+    }
+    DisposableEffect(rail, key, active, cornerDp) {
+        if (active) rail?.corners?.set(key, cornerDp)
+        onDispose { rail?.corners?.remove(key) }
     }
     this
         .trackedBounds(state, key, active)
@@ -116,6 +188,7 @@ fun Modifier.padTarget(state: LauncherState, key: String, label: String? = null,
             focused = it.isFocused
             if (!it.isFocused) pressed = false
             if (it.isFocused && active) state.focusKey = key
+            else if (!it.isFocused && state.focusKey == key) state.focusKey = null
         }
         .onKeyEvent {
             val activate = it.key == Key.DirectionCenter || it.key == Key.Enter || it.key == Key.NumPadEnter || it.key == Key.ButtonA
@@ -152,7 +225,7 @@ fun Modifier.padTarget(state: LauncherState, key: String, label: String? = null,
                 }
             }) { this@drawWithContent.drawContent() }
             if (pressed && active) drawRoundRect(Navy.copy(alpha = .07f), cornerRadius = CornerRadius(cornerDp.dp.toPx()))
-            if (showFocus) {
+            if (showFocus && rail == null) {
                 val settle = if (motion.enabled) (1f - arrival.value).coerceIn(-.03f, 1f) else 0f
                 val inset = ((if (look.theme == LauncherTheme.flat) -5 else -3) - settle * 2).dp.toPx()
                 val tl = Offset(inset, inset)

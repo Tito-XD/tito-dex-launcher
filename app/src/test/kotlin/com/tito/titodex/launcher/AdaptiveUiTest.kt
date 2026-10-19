@@ -171,6 +171,10 @@ class AdaptiveUiTest {
                 }
                 rule.waitForIdle()
                 assertWeatherFits(state, "${temperature.toInt()}°")
+                val date = rule.onNodeWithText(dateLabel(java.util.Calendar.getInstance())).fetchSemanticsNode().boundsInRoot
+                val wx = rule.onNodeWithText("${temperature.toInt()}°").fetchSemanticsNode().boundsInRoot
+                assertTrue("date and weather must share the second line", kotlin.math.abs(date.center.y - wx.center.y) < 6f)
+                assertTrue("weather must follow the date without overlap", date.right <= wx.left)
                 if (temperature < 0) capture("portrait-weather-${theme.name}")
             }
         }

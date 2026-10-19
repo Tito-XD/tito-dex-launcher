@@ -104,10 +104,6 @@ fun ClockSticker(state: LauncherState, s: Settings, size: String, now: Calendar,
             lineHeight = (numberSize * .95f).sp,
             shadow = if (look.plastic) Shadow(Color(0x400a1422), Offset(0f, 4f), 0f) else null,
         )
-        val time = @Composable {
-            Text(buildAnnotatedString { append("$hh:"); withStyle(SpanStyle(color = look.accentInk)) { append(mm) } },
-                style = timeStyle, maxLines = 1, softWrap = false)
-        }
         if (size == "v") {
             Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 BoxWithConstraints(Modifier.weight(1f, fill = false).fillMaxWidth(), contentAlignment = Alignment.TopStart) {
@@ -143,21 +139,12 @@ fun ClockSticker(state: LauncherState, s: Settings, size: String, now: Calendar,
                     if (s.showWeather) WeatherChip(state, s, weather, 16.sp, live)
                 }
             }
-        } else if (banner) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                time()
-                Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    DateStamp(dateLabel(now), metaSize)
-                    if (s.showWeather) WeatherChip(state, s, weather, metaSize, live)
-                }
-            }
         } else {
-            // Keep two readable rows in a narrow 2x1 cell: time + temperature,
-            // then date. Stacking three rows would leave tiny clock numerals.
-            val splitMetadata = s.showWeather && maxWidth.value < 210f * density.fontScale
+            // Always one line for time, one shared line for date and weather.
+            // Narrow screens only tighten decoration, never change this hierarchy.
             val horizontalTime = @Composable { modifier: Modifier ->
                 BoxWithConstraints(modifier, contentAlignment = Alignment.BottomStart) {
-                    val candidateSize = if (size == "l") 64f else 48f
+                    val candidateSize = if (banner) 74f else if (size == "l") 64f else 48f
                     val candidate = timeStyle.copy(fontSize = candidateSize.sp, lineHeight = candidateSize.sp,
                         platformStyle = PlatformTextStyle(includeFontPadding = false))
                     val measured = timeMeasurer.measure("88:88", candidate, softWrap = false).size
@@ -170,20 +157,11 @@ fun ClockSticker(state: LauncherState, s: Settings, size: String, now: Calendar,
                 }
             }
             Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                if (splitMetadata) {
-                    Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp),
-                        verticalAlignment = Alignment.CenterVertically) {
-                        horizontalTime(Modifier.weight(1f))
-                        WeatherChip(state, s, weather, metaSize, live, compact = true)
-                    }
+                horizontalTime(Modifier.weight(1f).fillMaxWidth())
+                Row(Modifier.fillMaxWidth().heightIn(min = 30.dp), horizontalArrangement = Arrangement.spacedBy(5.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
                     DateStamp(dateLabel(now), metaSize, compact = narrowDate)
-                } else {
-                    horizontalTime(Modifier.weight(1f).fillMaxWidth())
-                    Row(Modifier.heightIn(min = 36.dp), horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalAlignment = Alignment.CenterVertically) {
-                        DateStamp(dateLabel(now), metaSize, compact = narrowDate)
-                        if (s.showWeather) WeatherChip(state, s, weather, metaSize, live)
-                    }
+                    if (s.showWeather) WeatherChip(state, s, weather, metaSize, live, compact = narrowDate)
                 }
             }
         }
@@ -236,7 +214,7 @@ private fun DateStamp(label: String, size: androidx.compose.ui.unit.TextUnit, co
                 drawRoundRect(look.bgInk, cornerRadius = CornerRadius(6.dp.toPx()), style = Stroke(1.5.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(5f, 4f))))
             }.padding(horizontal = if (compact) 3.dp else 7.dp, vertical = 2.dp),
         )
-        look.flat -> Text(label, style = text(size, FontWeight.ExtraBold, Cream), maxLines = 1, softWrap = false, modifier = Modifier.background(Navy, RoundedCornerShape(12.dp)).padding(horizontal = 10.dp, vertical = 3.dp))
+        look.flat -> Text(label, style = text(size, FontWeight.ExtraBold, Cream), maxLines = 1, softWrap = false, modifier = Modifier.background(Navy, RoundedCornerShape(12.dp)).padding(horizontal = if (compact) 3.dp else 10.dp, vertical = 3.dp))
         else -> Text(label, style = text(size, color = look.bgInk), maxLines = 1, softWrap = false)
     }
 }
