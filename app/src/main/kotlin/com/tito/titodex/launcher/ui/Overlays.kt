@@ -43,6 +43,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.IntOffset
@@ -69,8 +70,8 @@ import kotlin.math.roundToInt
 private val Shadowy = Color(0x5908101c)
 
 @Composable
-private fun Modifier.card(look: Look, radius: Int = 16): Modifier {
-    val shape = RoundedCornerShape(if (look.plastic) radius + 4 else radius).let { it }
+private fun Modifier.card(look: Look): Modifier {
+    val shape = plateShape()
     val bg = when (look.theme) { LauncherTheme.journal -> Paper; LauncherTheme.plastic -> Color(0xf2f2f8fa); LauncherTheme.flat -> FlatPaper }
     return this.shadow(14.dp, shape, ambientColor = Shadowy, spotColor = Shadowy).background(bg, shape)
         .then(if (look.journal) Modifier.border(1.25.dp, Navy.copy(alpha = .25f), shape) else if (look.plastic) Modifier.border(1.dp, Color.White.copy(alpha = .8f), shape) else Modifier)
@@ -94,7 +95,7 @@ fun Field(value: String, onChange: (String) -> Unit, max: Int, modifier: Modifie
         value, { onChange(it.take(max)) }, singleLine = true, textStyle = text(14.sp, FontWeight.Normal, Navy), cursorBrush = SolidColor(Coral),
         keyboardOptions = KeyboardOptions(imeAction = if (onDone != null) ImeAction.Search else ImeAction.Done),
         keyboardActions = KeyboardActions(onSearch = { onDone?.invoke() }, onDone = { onDone?.invoke() }),
-        modifier = modifier.fillMaxWidth().height(36.dp).background(Color.White, RoundedCornerShape(10.dp)).border(1.25.dp, Navy.copy(alpha = .3f), RoundedCornerShape(10.dp)),
+        modifier = modifier.fillMaxWidth().height(36.dp).background(Color.White, RoundedCornerShape(LauncherCorners.control)).border(1.25.dp, Navy.copy(alpha = .3f), RoundedCornerShape(LauncherCorners.control)),
         decorationBox = { inner ->
             Box(Modifier.fillMaxSize().padding(horizontal = 10.dp), contentAlignment = Alignment.CenterStart) {
                 if (value.isEmpty()) Text(hint, style = text(14.sp, FontWeight.Normal, Navy.copy(alpha = .4f)))
@@ -125,6 +126,7 @@ fun PopLayer(state: LauncherState, wDp: Float, hDp: Float) {
         Modifier
             .offset { IntOffset(x.roundToInt(), y.roundToInt()) }
             .motionReveal(pop)
+            .testTag("anchored-popover")
             .onSizeChanged { size = it }
             .width(minOf(wDp - 16f, when (pop) { is Pop.Trainer -> 236f; is Pop.Weather -> 350f; else -> 196f }).dp)
             .heightIn(max = (hDp - 16f).coerceAtLeast(1f).dp).card(look).pointerInput(Unit) { detectTapGestures { } }.padding(6.dp).verticalScroll(rememberScrollState())
@@ -444,7 +446,7 @@ fun CityDialog(state: LauncherState) {
         }
     }
     Box(Modifier.fillMaxSize().background(Color(0x6108101c)).pointerInput(Unit) { detectTapGestures { state.cityDialog = false } }.imePadding(), contentAlignment = Alignment.Center) {
-        Column(Modifier.width(340.dp).heightIn(max = 400.dp).card(look, 18).pointerInput(Unit) { detectTapGestures { } }.padding(14.dp)) {
+        Column(Modifier.width(340.dp).heightIn(max = 400.dp).card(look).pointerInput(Unit) { detectTapGestures { } }.padding(14.dp)) {
             Text("选择天气城市", style = text(17.sp, FontWeight.ExtraBold, Navy))
             Text("搜索词会发送给 Open-Meteo 城市服务。选择结果后才会开启天气。", style = text(11.sp, FontWeight.Bold, Navy.copy(alpha = .6f)), modifier = Modifier.padding(vertical = 6.dp))
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -468,7 +470,7 @@ fun WidgetPicker(state: LauncherState) {
     LaunchedEffect(Unit) { providers = state.loadWidgetProviders() }
     Box(Modifier.fillMaxSize().background(Color(0x6108101c)).pointerInput(Unit) { detectTapGestures { state.widgetPicker = false } }) {
         Column(
-            Modifier.align(Alignment.BottomCenter).fillMaxWidth().heightIn(max = 400.dp).card(look, 20).pointerInput(Unit) { detectTapGestures { } }
+            Modifier.align(Alignment.BottomCenter).fillMaxWidth().heightIn(max = 400.dp).card(look).pointerInput(Unit) { detectTapGestures { } }
                 .padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 10.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {

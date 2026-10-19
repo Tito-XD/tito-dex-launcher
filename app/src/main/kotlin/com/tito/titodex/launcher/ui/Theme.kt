@@ -22,7 +22,6 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -98,9 +97,14 @@ fun lookOf(s: Settings): Look {
 
 val LocalLook = compositionLocalOf { lookOf(Settings()) }
 
-fun plateShape(look: Look, journalRadius: Dp = 16.dp): Shape = RoundedCornerShape(
-    when (look.theme) { LauncherTheme.journal -> journalRadius; LauncherTheme.plastic -> 16.dp; LauncherTheme.flat -> 20.dp },
-)
+/** Fixed dimensions: never use the Int (percentage) RoundedCornerShape overload. */
+object LauncherCorners {
+    val small = 8.dp
+    val control = 12.dp
+    val panel = 16.dp
+}
+
+fun plateShape(): Shape = RoundedCornerShape(LauncherCorners.panel)
 
 /** Same warm, diagonal matte shell as the restored TitoDex App. */
 fun plasticSurfaceBrush(alpha: Float = .92f, opaque: Boolean = false): Brush = Brush.linearGradient(
@@ -115,11 +119,11 @@ enum class PlateKind { Plain, Trainer, Shelf, Tito }
 @Composable
 fun Modifier.plate(look: Look, kind: PlateKind = PlateKind.Plain): Modifier {
     val a = look.plateAlpha
-    val shape = plateShape(look)
+    val shape = plateShape()
     return when (look.theme) {
         LauncherTheme.journal -> this
             .drawBehind {
-                val r = CornerRadius(16.dp.toPx())
+                val r = CornerRadius(LauncherCorners.panel.toPx())
                 drawRoundRect(Color(0x2b566a77), topLeft = Offset(0f, 3.dp.toPx()), size = size, cornerRadius = r)
                 drawRoundRect(Color(0xffe4dfd3), topLeft = Offset(0f, 2.dp.toPx()), size = size, cornerRadius = r)
             }
@@ -137,7 +141,7 @@ fun Modifier.plate(look: Look, kind: PlateKind = PlateKind.Plain): Modifier {
                         Brush.linearGradient(0f to Color.White.copy(alpha = .26f),
                             .48f to Color.White.copy(alpha = .03f), 1f to Navy.copy(alpha = .15f)),
                         Offset(inset, inset), Size(size.width - inset * 2, size.height - inset * 2),
-                        CornerRadius(16.dp.toPx() - inset), style = Stroke(1.dp.toPx()),
+                        CornerRadius(LauncherCorners.panel.toPx() - inset), style = Stroke(1.dp.toPx()),
                     )
                 }
         }

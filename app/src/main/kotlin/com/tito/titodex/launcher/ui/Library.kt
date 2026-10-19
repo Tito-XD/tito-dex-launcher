@@ -131,7 +131,7 @@ fun LibrarySheet(state: LauncherState, wDp: Float, hDp: Float) {
             Modifier.fillMaxSize().background(Color(0xff08101c).copy(alpha = .38f * scrimAlpha))
                 .then(if (open && !dragFromLib) Modifier.pointerInput(Unit) { detectTapGestures { state.closeLibrary() } } else Modifier),
         )
-        val radius = if (look.plastic) 16.dp else 22.dp
+        val radius = LauncherCorners.panel
         val shape = RoundedCornerShape(topStart = radius, topEnd = radius)
         val bg = when {
             look.journal -> Modifier.background(Paper, shape).border(1.25.dp, JournalLine, shape)

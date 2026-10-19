@@ -113,7 +113,8 @@ fun EditChrome(state: LauncherState, wDp: Float, hDp: Float, photo: ImageBitmap?
             }
             else -> {
                 val land = state.orient.landscape
-                val shape = if (land) RoundedCornerShape(topStart = 20.dp) else RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
+                val shape = if (land) RoundedCornerShape(topStart = LauncherCorners.panel)
+                    else RoundedCornerShape(topStart = LauncherCorners.panel, topEnd = LauncherCorners.panel)
                 val bg = when (look.theme) {
                     LauncherTheme.journal -> Paper.copy(alpha = .97f)
                     LauncherTheme.plastic -> Color(0xf2ecf4f7)

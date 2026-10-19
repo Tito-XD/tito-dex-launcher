@@ -35,10 +35,14 @@ class HeaderTypographyTest {
     private fun launch(): Pair<FakeDevice, LauncherState> {
         val device = FakeDevice(Settings(theme = LauncherTheme.plastic, motion = false, coachSeen = true,
             hints = Hints.always, city = City("测试城市", 31.0, 121.0)).encode())
+        val weather = object : WeatherSource {
+            override fun search(query: String): List<City> = emptyList()
+            override fun current(city: City) = WeatherReading(26.0, 3, 0L)
+        }
         lateinit var state: LauncherState
         rule.setContent {
             val scope = rememberCoroutineScope()
-            state = remember { LauncherState(device, NoWeather, scope, Dispatchers.Unconfined) }
+            state = remember { LauncherState(device, weather, scope, Dispatchers.Unconfined) }
             LaunchedEffect(Unit) { state.start(); state.weather = WeatherReading(26.0, 3, 0L) }
             LauncherApp(state, clock = { Calendar.getInstance().apply { set(2026, 9, 19, 10, 8, 0) } },
                 contentInsets = WindowInsets(left = 0, top = 36, right = 0, bottom = 48))
@@ -128,5 +132,58 @@ class HeaderTypographyTest {
             state.update { it.copy(avatarShape = AvatarShape.circle) }
         }
         capture("square-circle").recycle()
+    }
+
+    @Test fun metadataInkIsCenteredAcrossThemesAndTemperatures() {
+        val (_, state) = launch()
+        for (theme in LauncherTheme.entries) for (temperature in listOf(26.0, -28.0, 7.0)) {
+            rule.runOnIdle {
+                state.update { it.copy(theme = theme) }
+                state.weather = WeatherReading(temperature, 3, 0L)
+            }
+            val bitmap = capture("metadata-${theme.name}-${temperature.toInt()}")
+            fun bounds(tag: String) = rule.onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+            val dark = { color: Int -> Color.red(color) < 110 && Color.green(color) < 120 && Color.blue(color) < 130 }
+            val dateColor = if (theme == LauncherTheme.plastic)
+                { color: Int -> Color.red(color) > 190 && Color.green(color) > 190 && Color.blue(color) > 190 } else dark
+            val date = pixels(bitmap, bounds("clock-date"), dateColor)
+            val weekday = pixels(bitmap, bounds("clock-weekday"), dateColor)
+            val number = pixels(bitmap, bounds("weather-temperature"), dark)
+            val icon = pixels(bitmap, bounds("weather-icon"), dark)
+            val chip = bounds("clock-weather")
+            val row = bounds("clock-metadata")
+            assertEquals("$theme: date visible center", chip.center.y, date.center.y, 1f)
+            assertEquals("$theme: hollow weekday visible center", chip.center.y, weekday.center.y, 1f)
+            assertEquals("$theme: temperature visible center inside sticker", chip.center.y, number.center.y, 1f)
+            assertEquals("$theme: icon visible center inside sticker", chip.center.y, icon.center.y, 1f)
+            assertEquals("$theme: icon and temperature centered as one group", chip.center.x, (icon.left + number.right) / 2, 1.5f)
+            assertEquals("$theme: full metadata row visually centered", row.center.x, (date.left + chip.right) / 2, 2f)
+            bitmap.recycle()
+        }
+    }
+
+    @Test fun weatherAndTrainerPopoversKeepFixedCornersAndCloseNormally() {
+        val (_, state) = launch()
+        val density = rule.activity.resources.displayMetrics.density
+        for (theme in LauncherTheme.entries) {
+            rule.runOnIdle {
+                state.update { it.copy(theme = theme) }
+                state.weather = WeatherReading(26.0, 3, 0L,
+                    listOf(HourForecast("现在", 26, 3), HourForecast("11时", 27, 2), HourForecast("12时", 28, 0), HourForecast("13时", 27, 2)),
+                    listOf(DayForecast("今天", 28, 21, 3), DayForecast("明天", 27, 20, 61), DayForecast("周三", 26, 19, 2)))
+            }
+            for ((label, name) in listOf("天气" to "weather", "个人名片" to "trainer")) {
+                rule.onNodeWithContentDescription(label).performClick()
+                val bitmap = capture("popover-$name-${theme.name}")
+                val bounds = rule.onNodeWithTag("anchored-popover").fetchSemanticsNode().boundsInRoot
+                // A fixed 16dp corner leaves this point inside the panel even on a tall forecast.
+                // The former percentage-radius overload cuts deeply into this point.
+                val color = bitmap.getPixel((bounds.left + 10 * density).toInt(), (bounds.top + 4 * density).toInt())
+                assertTrue("$theme $name: corner must not scale with panel height", minOf(Color.red(color), Color.green(color), Color.blue(color)) > 232)
+                bitmap.recycle()
+                rule.runOnIdle { state.back() }
+                assertNull(state.pop)
+            }
+        }
     }
 }

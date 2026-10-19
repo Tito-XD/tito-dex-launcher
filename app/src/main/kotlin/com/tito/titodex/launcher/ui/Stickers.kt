@@ -183,11 +183,11 @@ private fun CompactDateStamp(now: Calendar, size: androidx.compose.ui.unit.TextU
         drawStyle = Stroke(width = with(density) { (.8f * size.value / 16f).dp.toPx() }, join = StrokeJoin.Round),
     )
     val dateText = @Composable { modifier: Modifier ->
-        Text(date, style = dateStyle, maxLines = 1, softWrap = false, modifier = modifier)
+        OpticalText(date, dateStyle, modifier.testTag("clock-date"))
     }
     val weekdayText = @Composable { modifier: Modifier ->
-        Text(weekday, style = weekdayStyle, maxLines = 1, softWrap = false,
-            modifier = modifier.padding(horizontal = 1.dp).testTag("clock-weekday").semantics {
+        OpticalText(weekday, weekdayStyle,
+            modifier.padding(horizontal = 1.dp).testTag("clock-weekday").semantics {
                 contentDescription = dateLabel(now).substringAfter(' ')
             })
     }
@@ -199,7 +199,7 @@ private fun CompactDateStamp(now: Calendar, size: androidx.compose.ui.unit.TextU
         if (!wrap || needed <= with(density) { maxWidth.toPx() }) {
             Row(Modifier.heightIn(min = if (wrap) 28.dp else 24.dp), horizontalArrangement = Arrangement.spacedBy(5.dp),
                 verticalAlignment = Alignment.CenterVertically) {
-                dateText(Modifier.alignByBaseline()); weekdayText(Modifier.alignByBaseline())
+                dateText(Modifier); weekdayText(Modifier)
             }
         } else {
             Column { dateText(Modifier); weekdayText(Modifier) }
@@ -216,11 +216,12 @@ private fun WeatherChip(state: LauncherState, s: Settings, weather: WeatherReadi
         weather == null -> if (state.weatherError != null) "—" else "…"
         else -> "${weather.temperature.roundToInt()}°"
     }
-    val (bg, fg, shape) = when {
-        look.journal -> Triple(Paper, JournalInk, RoundedCornerShape(5.dp, 17.dp, 17.dp, 5.dp))
-        look.plastic -> Triple(Cream.copy(alpha = .9f), PlasticInk, RoundedCornerShape(10.dp))
-        else -> Triple(Color(0xffafc7da), FlatInk, RoundedCornerShape(17.dp))
+    val (bg, fg) = when {
+        look.journal -> Paper to JournalInk
+        look.plastic -> Cream.copy(alpha = .9f) to PlasticInk
+        else -> Color(0xffafc7da) to FlatInk
     }
+    val shape = RoundedCornerShape(LauncherCorners.small)
     val density = LocalDensity.current
     val measurer = rememberTextMeasurer()
     val style = text(size, FontWeight.ExtraBold, fg).copy(platformStyle = PlatformTextStyle(includeFontPadding = false))
@@ -233,8 +234,9 @@ private fun WeatherChip(state: LauncherState, s: Settings, weather: WeatherReadi
         val tight = narrow && showIcon && labelWidth + 24.dp > maxWidth
         val displayLabel = if (city == null && narrow) "天气" else label
         Row(
-            (if (live) Modifier.padTarget(state, "wx", "天气") { state.pop = Pop.Weather(state.rects["wx"] ?: androidx.compose.ui.geometry.Rect.Zero) } else Modifier)
+            (if (live) Modifier.padTarget(state, "wx", "天气", LauncherCorners.small.value) { state.pop = Pop.Weather(state.rects["wx"] ?: androidx.compose.ui.geometry.Rect.Zero) } else Modifier)
                 .testTag("clock-weather")
+                .heightIn(min = 24.dp)
                 .background(bg, shape)
                 .then(if (look.journal) Modifier.border(1.25.dp, JournalLine, shape) else if (look.plastic) Modifier.border(1.dp, Color.White.copy(alpha = .7f), shape) else Modifier)
                 .padding(horizontal = if (tight) 2.dp else if (narrow) 4.dp else 10.dp, vertical = 3.dp),
@@ -242,17 +244,18 @@ private fun WeatherChip(state: LauncherState, s: Settings, weather: WeatherReadi
             horizontalArrangement = Arrangement.spacedBy(if (tight) 2.dp else 4.dp),
         ) {
             if (showIcon) Canvas(Modifier.size(if (narrow) 12.dp else 14.dp).testTag("weather-icon")) { drawCloud(fg) }
-            Text(displayLabel, style = style, maxLines = 1, softWrap = false)
+            OpticalText(displayLabel, style, Modifier.testTag("weather-temperature"))
         }
     }
 }
 
 private fun DrawScope.drawCloud(c: Color) {
     val w = size.width
-    drawCircle(c, w * .22f, Offset(w * .33f, w * .58f))
-    drawCircle(c, w * .28f, Offset(w * .55f, w * .45f))
-    drawCircle(c, w * .2f, Offset(w * .75f, w * .6f))
-    drawRect(c, Offset(w * .3f, w * .55f), Size(w * .5f, w * .25f))
+    // Visible bounds are symmetric about the Canvas center, including the cloud's flat base.
+    drawCircle(c, w * .22f, Offset(w * .30f, w * .63f))
+    drawCircle(c, w * .32f, Offset(w * .50f, w * .47f))
+    drawCircle(c, w * .22f, Offset(w * .70f, w * .63f))
+    drawRect(c, Offset(w * .3f, w * .6f), Size(w * .4f, w * .25f))
 }
 
 // ------------------------------------------------------------------ trainer
@@ -270,7 +273,7 @@ fun TrainerSticker(state: LauncherState, s: Settings, size: String, hour: Int, l
         }
         // An inset version of the plate's corners remains visibly rectangular.
         val shape = if (s.avatarShape == com.tito.titodex.launcher.AvatarShape.circle) CircleShape
-            else RoundedCornerShape(if (look.flat) 12.dp else 10.dp)
+            else RoundedCornerShape(LauncherCorners.small)
         Box(
             Modifier.size(d).testTag("trainer-avatar").clip(shape)
                 .background(if (look.plastic) Brush.linearGradient(listOf(Color(0xffffd778), Color(0xffffac78))) else Brush.linearGradient(listOf(bg, bg)))
@@ -310,8 +313,9 @@ fun TrainerSticker(state: LauncherState, s: Settings, size: String, hour: Int, l
     }
     BoxWithConstraints(
         Modifier.fillMaxSize()
+            .testTag("trainer-card")
             .then(if (look.journal) Modifier.rotate(-1.4f) else Modifier)
-            .then(if (live) Modifier.padTarget(state, "trainer", "个人名片") { state.pop = Pop.Trainer(state.rects["trainer"] ?: androidx.compose.ui.geometry.Rect.Zero) } else Modifier)
+            .then(if (live) Modifier.padTarget(state, "trainer", "个人名片", LauncherCorners.panel.value) { state.pop = Pop.Trainer(state.rects["trainer"] ?: androidx.compose.ui.geometry.Rect.Zero) } else Modifier)
             .plate(look, PlateKind.Trainer),
     ) {
         val cardHeight = maxHeight

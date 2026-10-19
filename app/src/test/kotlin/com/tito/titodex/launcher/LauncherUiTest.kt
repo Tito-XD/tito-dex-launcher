@@ -116,12 +116,14 @@ class LauncherUiTest {
         rule.onNodeWithText(date.substringBefore(' ')).performSemanticsAction(SemanticsActions.GetTextLayoutResult) { assertTrue(it(dateLayouts)) }
         rule.onNodeWithText(weekday).performSemanticsAction(SemanticsActions.GetTextLayoutResult) { assertTrue(it(weekdayLayouts)) }
         assertEquals(dateLayouts.single().layoutInput.style.fontSize, weekdayLayouts.single().layoutInput.style.fontSize)
-        assertEquals("date and weekday baseline", dateBounds.top + dateLayouts.single().getLineBaseline(0),
-            weekdayBounds.top + weekdayLayouts.single().getLineBaseline(0), 1f)
+        assertEquals("date and weekday visible center", dateBounds.center.y, weekdayBounds.center.y, 1f)
         rule.onNodeWithContentDescription(date.substringAfter(' ')).assertExists()
         for (label in listOf(date.substringBefore(' '), weekday, "19°")) {
             val bounds = rule.onNodeWithText(label).fetchSemanticsNode().boundsInRoot
-            assertTrue("vertical clock clipped: $label $bounds", bounds.height >= 30f)
+            rule.onNodeWithText(label).performSemanticsAction(SemanticsActions.GetTextLayoutResult) { action ->
+                val layouts = mutableListOf<TextLayoutResult>(); assertTrue(action(layouts))
+                assertFalse("vertical clock clipped: $label", layouts.single().hasVisualOverflow)
+            }
             assertTrue("outside 1x2 cell: $label $bounds", bounds.right <= 190f && bounds.bottom <= 356f)
         }
     }
@@ -134,9 +136,14 @@ class LauncherUiTest {
         rule.waitForIdle()
         val date = rule.onNodeWithText(dateLabel(java.util.Calendar.getInstance()).substringBefore(' ')).fetchSemanticsNode().boundsInRoot
         val weather = rule.onNodeWithText("19°").fetchSemanticsNode().boundsInRoot
-        // hdpi (1.5×): the compact 14sp metadata still gets its full font line.
-        assertTrue("date clipped: $date", date.height >= 25f)
-        assertTrue("weather clipped: $weather", weather.height >= 25f)
+        // Text is positioned by its visible ink instead of retaining padded font line boxes.
+        for (label in listOf(dateLabel(java.util.Calendar.getInstance()).substringBefore(' '), "19°")) {
+            rule.onNodeWithText(label).performSemanticsAction(SemanticsActions.GetTextLayoutResult) { action ->
+                val layouts = mutableListOf<TextLayoutResult>(); assertTrue(action(layouts))
+                assertFalse("metadata clipped: $label", layouts.single().hasVisualOverflow)
+            }
+        }
+        assertEquals("date and temperature visible center", date.center.y, weather.center.y, 1f)
         assertTrue("metadata below cell: $date / $weather", maxOf(date.bottom, weather.bottom) <= 196f)
     }
 
